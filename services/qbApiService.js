@@ -34,7 +34,7 @@ async function retryAfterRefresh(requestFn, label, emptyResponse) {
   }
 }
 
-async function queryResource(resource, label) {
+async function queryResource(resource, label, queryOptions = {}) {
   const { access_token, realmId } = qbTokenService.getTokens();
 
   if (!access_token || !realmId) {
@@ -44,7 +44,11 @@ async function queryResource(resource, label) {
     };
   }
 
-  const query = encodeURIComponent(`select * from ${resource}`);
+  const select = queryOptions.columns?.length
+    ? queryOptions.columns.join(", ")
+    : "*";
+  const where = queryOptions.where ? ` where ${queryOptions.where}` : "";
+  const query = encodeURIComponent(`select ${select} from ${resource}${where}`);
 
   const requestFn = async () => {
     const currentTokens = qbTokenService.getTokens();
@@ -153,8 +157,46 @@ async function getCustomers() {
   }
 }
 
-async function getBillings() {
-  return queryResource("Bill", "billing");
+const billColumns = new Set([
+  "Id",
+  "SyncToken",
+  "MetaData",
+  "CustomField",
+  "DocNumber",
+  "TxnDate",
+  "CurrencyRef",
+  "ExchangeRate",
+  "PrivateNote",
+  "Line",
+  "VendorRef",
+  "APAccountRef",
+  "TermsRef",
+  "DueDate",
+  "SalesTermRef",
+  "LinkedTxn",
+  "TotalAmt",
+  "HomeTotalAmt",
+  "Balance",
+  "Memo",
+  "TxnTaxDetail"
+]);
+
+async function getBillings(options = {}) {
+  const requestedColumns = options.columns?.length
+    ? options.columns
+    : null;
+  const columns = requestedColumns
+    ? requestedColumns.filter((column) => billColumns.has(column))
+    : null;
+
+  if (requestedColumns && columns.length !== requestedColumns.length) {
+    throw new Error("Invalid billing column. Use valid QuickBooks Bill fields.");
+  }
+
+  return queryResource("Bill", "billing", {
+    columns,
+    where: options.paidOnly ? "Balance = '0'" : undefined
+  });
 }
 
 async function createBilling(payload) {

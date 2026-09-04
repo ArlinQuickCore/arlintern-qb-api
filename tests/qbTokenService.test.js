@@ -15,6 +15,29 @@ test("exposes QuickBooks billing resource support", () => {
   assert.equal(typeof qbApiService.createBilling, "function");
 });
 
+test("builds a paid billing query with selected columns", async () => {
+  const getTokensMock = mock.method(qbTokenService, "getTokens", () => ({
+    access_token: "test-access-token",
+    refresh_token: "test-refresh-token",
+    realmId: "1234567890"
+  }));
+  const axiosGetMock = mock.method(axios, "get", async (url) => ({
+    data: { url, QueryResponse: { Bill: [] } }
+  }));
+
+  try {
+    const result = await qbApiService.getBillings({
+      paidOnly: true,
+      columns: ["Id", "VendorRef", "TotalAmt"]
+    });
+
+    assert.match(result.url, /query\?query=select%20Id%2C%20VendorRef%2C%20TotalAmt%20from%20Bill%20where%20Balance%20%3D%20'0'/);
+  } finally {
+    getTokensMock.mock.restore();
+    axiosGetMock.mock.restore();
+  }
+});
+
 test("persists tokens to disk and loads them back", () => {
   fs.rmSync(tokenDir, { recursive: true, force: true });
 
