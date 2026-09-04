@@ -3,6 +3,9 @@ import qbTokenService from "./qbTokenService.js";
 
 const getCompanyUrl = (realmId, resource) =>
   `https://quickbooks.api.intuit.com/v3/company/${realmId}/${resource}`;
+const quickBooksRequestConfig = {
+  timeout: 20000
+};
 
 async function retryAfterRefresh(requestFn, label, emptyResponse) {
   try {
@@ -61,6 +64,7 @@ async function queryResource(resource, label, queryOptions = {}) {
       const response = await axios.get(
         getCompanyUrl(currentTokens.realmId, `query?query=${query}`),
         {
+          ...quickBooksRequestConfig,
           headers: {
             Authorization: `Bearer ${currentTokens.access_token}`,
             Accept: "application/json"
@@ -157,6 +161,7 @@ async function getCustomers() {
     const response = await axios.get(
       `https://quickbooks.api.intuit.com/v3/company/${currentTokens.realmId}/query?query=select * from Customer`,
       {
+        ...quickBooksRequestConfig,
         headers: {
           Authorization: `Bearer ${currentTokens.access_token}`,
           Accept: "application/json"
