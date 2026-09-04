@@ -21,9 +21,20 @@ test("builds a paid billing query with selected columns", async () => {
     refresh_token: "test-refresh-token",
     realmId: "1234567890"
   }));
-  const axiosGetMock = mock.method(axios, "get", async (url) => ({
-    data: { url, QueryResponse: { Bill: [] } }
-  }));
+  let requestCount = 0;
+  const axiosGetMock = mock.method(axios, "get", async (url) => {
+    requestCount += 1;
+    return {
+      data: {
+        url,
+        QueryResponse: {
+          Bill: requestCount === 1
+            ? Array.from({ length: 1000 }, (_, index) => ({ Id: String(index + 1) }))
+            : [{ Id: "1001" }]
+        }
+      }
+    };
+  });
 
   try {
     const result = await qbApiService.getBillings({
@@ -31,7 +42,11 @@ test("builds a paid billing query with selected columns", async () => {
       columns: ["Id", "VendorRef", "TotalAmt"]
     });
 
-    assert.match(result.url, /query\?query=select%20Id%2C%20VendorRef%2C%20TotalAmt%20from%20Bill%20where%20Balance%20%3D%20'0'/);
+    assert.equal(result.QueryResponse.Bill.length, 1001);
+    assert.equal(requestCount, 2);
+    assert.match(result.QueryResponse.Bill[0].Id, /^1$/);
+    assert.match(axiosGetMock.mock.calls[0].arguments[0], /startposition%201%20maxresults%201000/);
+    assert.match(axiosGetMock.mock.calls[1].arguments[0], /startposition%201001%20maxresults%201000/);
   } finally {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();

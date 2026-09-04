@@ -48,27 +48,55 @@ async function queryResource(resource, label, queryOptions = {}) {
     ? queryOptions.columns.join(", ")
     : "*";
   const where = queryOptions.where ? ` where ${queryOptions.where}` : "";
-  const query = encodeURIComponent(`select ${select} from ${resource}${where}`);
+  const pageSize = queryOptions.fetchAll ? 1000 : null;
 
-  const requestFn = async () => {
-    const currentTokens = qbTokenService.getTokens();
-    const response = await axios.get(
-      getCompanyUrl(currentTokens.realmId, `query?query=${query}`),
-      {
-        headers: {
-          Authorization: `Bearer ${currentTokens.access_token}`,
-          Accept: "application/json"
+  const requestPage = async (startPosition = 1) => {
+    const pagination = pageSize
+      ? ` startposition ${startPosition} maxresults ${pageSize}`
+      : "";
+    const query = encodeURIComponent(`select ${select} from ${resource}${where}${pagination}`);
+
+    return retryAfterRefresh(async () => {
+      const currentTokens = qbTokenService.getTokens();
+      const response = await axios.get(
+        getCompanyUrl(currentTokens.realmId, `query?query=${query}`),
+        {
+          headers: {
+            Authorization: `Bearer ${currentTokens.access_token}`,
+            Accept: "application/json"
+          }
         }
-      }
-    );
+      );
 
-    return response.data;
-  };
-
-  try {
-    return await retryAfterRefresh(requestFn, label, {
+      return response.data;
+    }, label, {
       QueryResponse: { [resource]: [] }
     });
+  };
+
+  if (queryOptions.fetchAll) {
+    const allRows = [];
+    let startPosition = 1;
+    let response;
+
+    do {
+      response = await requestPage(startPosition);
+      const rows = response.QueryResponse?.[resource] || [];
+      allRows.push(...rows);
+      startPosition += pageSize;
+    } while ((response.QueryResponse?.[resource] || []).length === pageSize);
+
+    return {
+      ...response,
+      QueryResponse: {
+        ...response.QueryResponse,
+        [resource]: allRows
+      }
+    };
+  }
+
+  try {
+    return await requestPage();
   } catch (error) {
     return {
       QueryResponse: { [resource]: [] },
@@ -195,7 +223,8 @@ async function getBillings(options = {}) {
 
   return queryResource("Bill", "billing", {
     columns,
-    where: options.paidOnly ? "Balance = '0'" : undefined
+    where: options.paidOnly ? "Balance = '0'" : undefined,
+    fetchAll: true
   });
 }
 
