@@ -6,8 +6,8 @@ const qbBillingController = {
       const columns = req.query.columns
         ? req.query.columns.split(",").map((column) => column.trim()).filter(Boolean)
         : undefined;
-      const paidOnly = req.query.paidOnly === "true";
-      const data = await qbApiService.getBillings({ columns, paidOnly });
+      const status = req.query.status || (req.query.paidOnly === "true" ? "paid" : "all");
+      const data = await qbApiService.getBillings({ columns, status });
       res.json(data);
     } catch (err) {
       console.error("Billing list error:", err);

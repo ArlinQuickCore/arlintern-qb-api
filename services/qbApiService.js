@@ -221,9 +221,20 @@ async function getBillings(options = {}) {
     throw new Error("Invalid billing column. Use valid QuickBooks Bill fields.");
   }
 
+  const status = options.status || (options.paidOnly ? "paid" : "all");
+  const whereByStatus = {
+    paid: "Balance = '0'",
+    unpaid: "Balance > '0'",
+    all: undefined
+  };
+
+  if (!(status in whereByStatus)) {
+    throw new Error("Invalid billing status. Use paid, unpaid, or all.");
+  }
+
   return queryResource("Bill", "billing", {
     columns,
-    where: options.paidOnly ? "Balance = '0'" : undefined,
+    where: whereByStatus[status],
     fetchAll: true
   });
 }
