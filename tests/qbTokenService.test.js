@@ -10,6 +10,11 @@ import qbApiService from "../services/qbApiService.js";
 const tokenDir = path.resolve("data");
 const tokenFile = path.join(tokenDir, "qb_tokens.json");
 
+test("exposes QuickBooks billing resource support", () => {
+  assert.equal(typeof qbApiService.getBillings, "function");
+  assert.equal(typeof qbApiService.createBilling, "function");
+});
+
 test("persists tokens to disk and loads them back", () => {
   fs.rmSync(tokenDir, { recursive: true, force: true });
 

@@ -8,6 +8,7 @@ import invoiceRoutes from "./routes/invoices.js";
 import itemRoutes from "./routes/items.js";
 import paymentRoutes from "./routes/payments.js";
 import vendorRoutes from "./routes/vendors.js";
+import billingRoutes from "./routes/billing.js";
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/billing", billingRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.get("/oauth/login", qbAuthController.login);
 app.get("/oauth/callback", qbAuthController.handleCallback);

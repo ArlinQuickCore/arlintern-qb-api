@@ -153,6 +153,14 @@ async function getCustomers() {
   }
 }
 
+async function getBillings() {
+  return queryResource("Bill", "billing");
+}
+
+async function createBilling(payload) {
+  return createResource("bill", payload, "billing");
+}
+
 async function createCustomer(payload) {
   const { access_token, realmId } = qbTokenService.getTokens();
 
@@ -199,6 +207,8 @@ const qbApiService = {
   createItem: (payload) => createResource("item", payload, "items"),
   getPayments: () => queryResource("Payment", "payments"),
   createPayment: (payload) => createResource("payment", payload, "payments"),
+  getBillings,
+  createBilling,
   getVendors: () => queryResource("Vendor", "vendors"),
   createVendor: (payload) => createResource("vendor", payload, "vendors")
 };
