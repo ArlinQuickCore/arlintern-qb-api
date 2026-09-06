@@ -24,6 +24,21 @@ test("builds a paid billing query with selected columns", async () => {
   let requestCount = 0;
   const axiosGetMock = mock.method(axios, "get", async (url) => {
     requestCount += 1;
+    if (url.includes("/Bill/")) {
+      return {
+        data: {
+          Bill: {
+            Id: "1",
+            CustomField: [
+              { DefinitionId: "10", Name: "Customer PO#", StringValue: "CPO-100" },
+              { DefinitionId: "20", Name: "Supplier PO#", StringValue: "SPO-200" },
+              { DefinitionId: "30", Name: "Vendor Type", StringValue: "PO Vendor" }
+            ]
+          }
+        }
+      };
+    }
+
     return {
       data: {
         url,
@@ -43,14 +58,14 @@ test("builds a paid billing query with selected columns", async () => {
     });
 
     assert.equal(result.QueryResponse.Bill.length, 1001);
-    assert.equal(requestCount, 2);
+    assert.equal(requestCount, 1003);
     assert.match(result.QueryResponse.Bill[0].Id, /^1$/);
     assert.match(axiosGetMock.mock.calls[0].arguments[0], /select%20\*%20from%20Bill/);
     assert.match(axiosGetMock.mock.calls[0].arguments[0], /startposition%201%20maxresults%201000/);
     assert.match(axiosGetMock.mock.calls[1].arguments[0], /startposition%201001%20maxresults%201000/);
-    assert.equal(result.QueryResponse.Bill[0]["Customer PO#"], null);
-    assert.equal(result.QueryResponse.Bill[0]["Supplier PO#"], null);
-    assert.equal(result.QueryResponse.Bill[0]["Vendor Type"], null);
+    assert.equal(result.QueryResponse.Bill[0]["Customer PO#"], "CPO-100");
+    assert.equal(result.QueryResponse.Bill[0]["Supplier PO#"], "SPO-200");
+    assert.equal(result.QueryResponse.Bill[0]["Vendor Type"], "PO Vendor");
   } finally {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();

@@ -142,6 +142,40 @@ async function createResource(resource, payload, label) {
   }
 }
 
+async function getResourceDetails(resource, ids, label) {
+  const details = new Map();
+  const concurrency = 8;
+
+  for (let index = 0; index < ids.length; index += concurrency) {
+    const batch = ids.slice(index, index + concurrency);
+    const results = await Promise.all(batch.map((id) => retryAfterRefresh(async () => {
+      const currentTokens = qbTokenService.getTokens();
+      const response = await axios.get(
+        getCompanyUrl(currentTokens.realmId, `${resource}/${encodeURIComponent(id)}`),
+        {
+          ...quickBooksRequestConfig,
+          headers: {
+            Authorization: `Bearer ${currentTokens.access_token}`,
+            Accept: "application/json"
+          }
+        }
+      );
+
+      return response.data?.[resource];
+    }, label)));
+
+    results.forEach((detail, resultIndex) => {
+      if (detail?.Id) {
+        details.set(String(detail.Id), detail);
+      } else if (detail) {
+        details.set(String(batch[resultIndex]), detail);
+      }
+    });
+  }
+
+  return details;
+}
+
 async function getCustomers() {
   const { access_token, realmId } = qbTokenService.getTokens();
 
@@ -225,30 +259,39 @@ const billingColumnAliases = {
   "Vendor Type": "VendorRef"
 };
 
-function getCustomFieldValue(customFields, definitionId) {
+function getCustomFieldValue(customFields, definitionId, fieldName) {
   return customFields?.find(
-    (field) => String(field.DefinitionId) === String(definitionId)
+    (field) =>
+      String(field.DefinitionId) === String(definitionId) ||
+      field.Name?.trim().toLowerCase() === fieldName.toLowerCase()
   )?.StringValue || null;
 }
 
-function addBillingColumnAliases(bill, vendorTypes = new Map()) {
-  const vendorId = bill.VendorRef?.value;
+function addBillingColumnAliases(bill, billDetails = new Map()) {
+  const detail = billDetails.get(String(bill.Id)) || bill;
+  const customFields = detail.CustomField || bill.CustomField;
 
   return {
-    ...bill,
+    ...detail,
     "Customer PO#": getCustomFieldValue(
-      bill.CustomField,
-      billingCustomColumnAliases["Customer PO#"]
+      customFields,
+      billingCustomColumnAliases["Customer PO#"],
+      "Customer PO#"
     ),
     "Supplier PO#": getCustomFieldValue(
-      bill.CustomField,
-      billingCustomColumnAliases["Supplier PO#"]
+      customFields,
+      billingCustomColumnAliases["Supplier PO#"],
+      "Supplier PO#"
     ),
-    "Vendor Type": vendorTypes.get(String(vendorId)) || null
+    "Vendor Type": getCustomFieldValue(
+      customFields,
+      process.env.VENDOR_TYPE_FIELD_ID || "3",
+      "Vendor Type"
+    )
   };
 }
 
-function addBillingDetails(response, vendorTypes) {
+function addBillingDetails(response, billDetails) {
   const bills = response.QueryResponse?.Bill;
 
   if (!Array.isArray(bills)) {
@@ -259,7 +302,7 @@ function addBillingDetails(response, vendorTypes) {
     ...response,
     QueryResponse: {
       ...response.QueryResponse,
-      Bill: bills.map((bill) => addBillingColumnAliases(bill, vendorTypes))
+      Bill: bills.map((bill) => addBillingColumnAliases(bill, billDetails))
     }
   };
 }
@@ -296,21 +339,17 @@ async function getBillings(options = {}) {
     fetchAll: true
   });
 
-  let vendorTypes = new Map();
-  if (requestedColumns?.includes("Vendor Type")) {
-    const vendorResponse = await queryResource("Vendor", "vendor types", {
-      columns: ["Id", "VendorTypeRef"],
-      fetchAll: true
-    });
+  const billDetails = requestedColumns?.some(
+    (column) => billingColumnAliases[column] || column === "CustomField"
+  )
+    ? await getResourceDetails(
+      "Bill",
+      (response.QueryResponse?.Bill || []).map((bill) => bill.Id).filter(Boolean),
+      "billing details"
+    )
+    : new Map();
 
-    for (const vendor of vendorResponse.QueryResponse?.Vendor || []) {
-      if (vendor.VendorTypeRef?.name) {
-        vendorTypes.set(String(vendor.Id), vendor.VendorTypeRef.name);
-      }
-    }
-  }
-
-  return addBillingDetails(response, vendorTypes);
+  return addBillingDetails(response, billDetails);
 }
 
 async function createBilling(payload) {
