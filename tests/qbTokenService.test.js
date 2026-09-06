@@ -39,7 +39,7 @@ test("builds a paid billing query with selected columns", async () => {
   try {
     const result = await qbApiService.getBillings({
       status: "paid",
-      columns: ["Id", "VendorRef", "TotalAmt"]
+      columns: ["Id", "VendorRef", "TotalAmt", "CustomField"]
     });
 
     assert.equal(result.QueryResponse.Bill.length, 1001);
@@ -47,6 +47,9 @@ test("builds a paid billing query with selected columns", async () => {
     assert.match(result.QueryResponse.Bill[0].Id, /^1$/);
     assert.match(axiosGetMock.mock.calls[0].arguments[0], /startposition%201%20maxresults%201000/);
     assert.match(axiosGetMock.mock.calls[1].arguments[0], /startposition%201001%20maxresults%201000/);
+    assert.equal(result.QueryResponse.Bill[0]["Customer PO#"], null);
+    assert.equal(result.QueryResponse.Bill[0]["Supplier PO#"], null);
+    assert.equal(result.QueryResponse.Bill[0]["Vendor Type"], null);
   } finally {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();

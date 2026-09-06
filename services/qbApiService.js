@@ -214,15 +214,65 @@ const billColumns = new Set([
   "TxnTaxDetail"
 ]);
 
+const billingCustomColumnAliases = {
+  "Customer PO#": process.env.CUSTOMER_PO_FIELD_ID || "1",
+  "Supplier PO#": process.env.SUPPLIER_PO_FIELD_ID || "2"
+};
+
+const billingColumnAliases = {
+  "Customer PO#": "CustomField",
+  "Supplier PO#": "CustomField",
+  "Vendor Type": "VendorRef"
+};
+
+function getCustomFieldValue(customFields, definitionId) {
+  return customFields?.find(
+    (field) => String(field.DefinitionId) === String(definitionId)
+  )?.StringValue || null;
+}
+
+function addBillingColumnAliases(bill, vendorTypes = new Map()) {
+  const vendorId = bill.VendorRef?.value;
+
+  return {
+    ...bill,
+    "Customer PO#": getCustomFieldValue(
+      bill.CustomField,
+      billingCustomColumnAliases["Customer PO#"]
+    ),
+    "Supplier PO#": getCustomFieldValue(
+      bill.CustomField,
+      billingCustomColumnAliases["Supplier PO#"]
+    ),
+    "Vendor Type": vendorTypes.get(String(vendorId)) || null
+  };
+}
+
+function addBillingDetails(response, vendorTypes) {
+  const bills = response.QueryResponse?.Bill;
+
+  if (!Array.isArray(bills)) {
+    return response;
+  }
+
+  return {
+    ...response,
+    QueryResponse: {
+      ...response.QueryResponse,
+      Bill: bills.map((bill) => addBillingColumnAliases(bill, vendorTypes))
+    }
+  };
+}
+
 async function getBillings(options = {}) {
   const requestedColumns = options.columns?.length
     ? options.columns
     : null;
   const columns = requestedColumns
-    ? requestedColumns.filter((column) => billColumns.has(column))
+    ? [...new Set(requestedColumns.map((column) => billingColumnAliases[column] || column))]
     : null;
 
-  if (requestedColumns && columns.length !== requestedColumns.length) {
+  if (requestedColumns && requestedColumns.some((column) => !billColumns.has(column) && !billingColumnAliases[column])) {
     throw new Error("Invalid billing column. Use valid QuickBooks Bill fields.");
   }
 
@@ -237,11 +287,27 @@ async function getBillings(options = {}) {
     throw new Error("Invalid billing status. Use paid, unpaid, or all.");
   }
 
-  return queryResource("Bill", "billing", {
+  const response = await queryResource("Bill", "billing", {
     columns,
     where: whereByStatus[status],
     fetchAll: true
   });
+
+  let vendorTypes = new Map();
+  if (requestedColumns?.includes("Vendor Type")) {
+    const vendorResponse = await queryResource("Vendor", "vendor types", {
+      columns: ["Id", "VendorTypeRef"],
+      fetchAll: true
+    });
+
+    for (const vendor of vendorResponse.QueryResponse?.Vendor || []) {
+      if (vendor.VendorTypeRef?.name) {
+        vendorTypes.set(String(vendor.Id), vendor.VendorTypeRef.name);
+      }
+    }
+  }
+
+  return addBillingDetails(response, vendorTypes);
 }
 
 async function createBilling(payload) {
