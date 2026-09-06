@@ -268,8 +268,11 @@ async function getBillings(options = {}) {
   const requestedColumns = options.columns?.length
     ? options.columns
     : null;
-  const columns = requestedColumns
-    ? [...new Set(requestedColumns.map((column) => billingColumnAliases[column] || column))]
+  const hasAliasColumn = requestedColumns?.some(
+    (column) => billingColumnAliases[column] || column === "CustomField"
+  );
+  const columns = requestedColumns && !hasAliasColumn
+    ? [...new Set(requestedColumns)]
     : null;
 
   if (requestedColumns && requestedColumns.some((column) => !billColumns.has(column) && !billingColumnAliases[column])) {

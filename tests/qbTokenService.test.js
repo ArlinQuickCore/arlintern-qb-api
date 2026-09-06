@@ -45,6 +45,7 @@ test("builds a paid billing query with selected columns", async () => {
     assert.equal(result.QueryResponse.Bill.length, 1001);
     assert.equal(requestCount, 2);
     assert.match(result.QueryResponse.Bill[0].Id, /^1$/);
+    assert.match(axiosGetMock.mock.calls[0].arguments[0], /select%20\*%20from%20Bill/);
     assert.match(axiosGetMock.mock.calls[0].arguments[0], /startposition%201%20maxresults%201000/);
     assert.match(axiosGetMock.mock.calls[1].arguments[0], /startposition%201001%20maxresults%201000/);
     assert.equal(result.QueryResponse.Bill[0]["Customer PO#"], null);
