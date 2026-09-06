@@ -142,7 +142,7 @@ async function createResource(resource, payload, label) {
   }
 }
 
-async function getResourceDetails(resource, ids, label) {
+async function getResourceDetails(resource, responseKey, ids, label) {
   const details = new Map();
   const concurrency = 8;
 
@@ -151,7 +151,7 @@ async function getResourceDetails(resource, ids, label) {
     const results = await Promise.all(batch.map((id) => retryAfterRefresh(async () => {
       const currentTokens = qbTokenService.getTokens();
       const response = await axios.get(
-        getCompanyUrl(currentTokens.realmId, `${resource}/${encodeURIComponent(id)}`),
+        getCompanyUrl(currentTokens.realmId, `${resource.toLowerCase()}/${encodeURIComponent(id)}`),
         {
           ...quickBooksRequestConfig,
           headers: {
@@ -161,7 +161,7 @@ async function getResourceDetails(resource, ids, label) {
         }
       );
 
-      return response.data?.[resource];
+      return response.data?.[responseKey];
     }, label)));
 
     results.forEach((detail, resultIndex) => {
@@ -343,6 +343,7 @@ async function getBillings(options = {}) {
     (column) => billingColumnAliases[column] || column === "CustomField"
   )
     ? await getResourceDetails(
+      "Bill",
       "Bill",
       (response.QueryResponse?.Bill || []).map((bill) => bill.Id).filter(Boolean),
       "billing details"

@@ -24,7 +24,7 @@ test("builds a paid billing query with selected columns", async () => {
   let requestCount = 0;
   const axiosGetMock = mock.method(axios, "get", async (url) => {
     requestCount += 1;
-    if (url.includes("/Bill/")) {
+    if (url.includes("/bill/")) {
       return {
         data: {
           Bill: {
