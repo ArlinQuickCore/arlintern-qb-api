@@ -7,7 +7,12 @@ const qbBillingController = {
         ? req.query.columns.split(",").map((column) => column.trim()).filter(Boolean)
         : undefined;
       const status = req.query.status || (req.query.paidOnly === "true" ? "paid" : "all");
-      const data = await qbApiService.getBillings({ columns, status });
+      const data = await qbApiService.getBillings({
+        columns,
+        status,
+        startDate: req.query.startDate,
+        endDate: req.query.endDate
+      });
       res.json(data);
     } catch (err) {
       console.error("Billing list error:", err);

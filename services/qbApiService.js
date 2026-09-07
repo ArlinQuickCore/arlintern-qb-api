@@ -343,9 +343,25 @@ async function getBillings(options = {}) {
     throw new Error("Invalid billing status. Use paid, unpaid, or all.");
   }
 
+  const dateFilters = [];
+  for (const [name, value, operator] of [
+    ["startDate", options.startDate, ">="],
+    ["endDate", options.endDate, "<="]
+  ]) {
+    if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`${name} must use YYYY-MM-DD format.`);
+    }
+
+    if (value) {
+      dateFilters.push(`TxnDate ${operator} '${value}'`);
+    }
+  }
+
+  const filters = [whereByStatus[status], ...dateFilters].filter(Boolean);
+
   const response = await queryResource("Bill", "billing", {
     columns,
-    where: whereByStatus[status],
+    where: filters.length ? filters.join(" and ") : undefined,
     fetchAll: true
   });
 

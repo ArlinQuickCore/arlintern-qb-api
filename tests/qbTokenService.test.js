@@ -54,13 +54,16 @@ test("builds a paid billing query with selected columns", async () => {
   try {
     const result = await qbApiService.getBillings({
       status: "paid",
-      columns: ["Id", "VendorRef", "TotalAmt", "CustomField"]
+      columns: ["Id", "VendorRef", "TotalAmt", "CustomField"],
+      startDate: "2025-01-01",
+      endDate: "2025-12-31"
     });
 
     assert.equal(result.QueryResponse.Bill.length, 1001);
     assert.equal(requestCount, 1003);
     assert.match(result.QueryResponse.Bill[0].Id, /^1$/);
     assert.match(axiosGetMock.mock.calls[0].arguments[0], /select%20\*%20from%20Bill/);
+    assert.match(axiosGetMock.mock.calls[0].arguments[0], /TxnDate%20%3E%3D%20'2025-01-01'%20and%20TxnDate%20%3C%3D%20'2025-12-31'/);
     assert.match(axiosGetMock.mock.calls[0].arguments[0], /startposition%201%20maxresults%201000/);
     assert.match(axiosGetMock.mock.calls[1].arguments[0], /startposition%201001%20maxresults%201000/);
     assert.equal(result.QueryResponse.Bill[0]["Customer PO#"], "CPO-100");
@@ -70,6 +73,13 @@ test("builds a paid billing query with selected columns", async () => {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();
   }
+});
+
+test("rejects invalid billing date filters", async () => {
+  await assert.rejects(
+    () => qbApiService.getBillings({ startDate: "01-01-2025" }),
+    /startDate must use YYYY-MM-DD format/
+  );
 });
 
 test("builds an unpaid billing query", async () => {
