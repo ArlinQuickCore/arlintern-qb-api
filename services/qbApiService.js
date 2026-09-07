@@ -8,33 +8,43 @@ const quickBooksRequestConfig = {
 };
 
 async function retryAfterRefresh(requestFn, label, emptyResponse) {
-  try {
-    return await requestFn();
-  } catch (error) {
-    if (!error.response || error.response.status !== 401) {
-      throw error;
-    }
-
+  for (let attempt = 0; attempt <= 3; attempt += 1) {
     try {
-      await qbTokenService.refreshAccessToken();
       return await requestFn();
-    } catch (refreshError) {
-      if (emptyResponse) {
+    } catch (error) {
+      if (error.response?.status === 429 && attempt < 3) {
+        const retryAfter = Number(error.response.headers?.["retry-after"]) || 2;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(retryAfter, 10) * 1000));
+        continue;
+      }
+
+      if (!error.response || error.response.status !== 401) {
+        throw error;
+      }
+
+      try {
+        await qbTokenService.refreshAccessToken();
+        return await requestFn();
+      } catch (refreshError) {
+        if (emptyResponse) {
+          return {
+            ...emptyResponse,
+            status: "unauthorized",
+            message: `QuickBooks rejected the stored token while ${label}. Re-run OAuth.`,
+            details: refreshError.response?.data || refreshError.message
+          };
+        }
+
         return {
-          ...emptyResponse,
           status: "unauthorized",
           message: `QuickBooks rejected the stored token while ${label}. Re-run OAuth.`,
           details: refreshError.response?.data || refreshError.message
         };
       }
-
-      return {
-        status: "unauthorized",
-        message: `QuickBooks rejected the stored token while ${label}. Re-run OAuth.`,
-        details: refreshError.response?.data || refreshError.message
-      };
     }
   }
+
+  throw new Error(`QuickBooks rate limit exceeded while ${label}. Try again later.`);
 }
 
 async function queryResource(resource, label, queryOptions = {}) {
@@ -144,7 +154,7 @@ async function createResource(resource, payload, label) {
 
 async function getResourceDetails(resource, responseKey, ids, label) {
   const details = new Map();
-  const concurrency = 8;
+  const concurrency = 2;
 
   for (let index = 0; index < ids.length; index += concurrency) {
     const batch = ids.slice(index, index + concurrency);
