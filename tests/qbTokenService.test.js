@@ -29,6 +29,10 @@ test("builds a paid billing query with selected columns", async () => {
         data: {
           Bill: {
             Id: "1",
+            Line: [{
+              Id: "1",
+              CustomField: [{ DefinitionId: "4", Name: "PHASE", StringValue: "Phase 1" }]
+            }],
             CustomField: [
               { DefinitionId: "10", Name: "Customer PO#", StringValue: "CPO-100" },
               { DefinitionId: "20", Name: "Supplier PO#", StringValue: "SPO-200" },
@@ -71,6 +75,7 @@ test("builds a paid billing query with selected columns", async () => {
     assert.equal(result.QueryResponse.Bill[0]["Customer PO#"], "CPO-100");
     assert.equal(result.QueryResponse.Bill[0]["Supplier PO#"], "SPO-200");
     assert.equal(result.QueryResponse.Bill[0]["Vendor Type"], "PO Vendor");
+    assert.equal(result.QueryResponse.Bill[0].Line[0].PHASE, "Phase 1");
   } finally {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();

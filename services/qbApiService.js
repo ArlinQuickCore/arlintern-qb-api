@@ -273,7 +273,8 @@ const billingCustomColumnAliases = {
 const billingColumnAliases = {
   "Customer PO#": "CustomField",
   "Supplier PO#": "CustomField",
-  "Vendor Type": "VendorRef"
+  "Vendor Type": "CustomField",
+  PHASE: "Line.CustomField"
 };
 
 function getCustomFieldValue(customFields, definitionId, fieldName) {
@@ -293,9 +294,16 @@ function getCustomFieldValue(customFields, definitionId, fieldName) {
 function addBillingColumnAliases(bill, billDetails = new Map()) {
   const detail = billDetails.get(String(bill.Id)) || bill;
   const customFields = detail.CustomField || bill.CustomField;
+  const phaseFieldId = process.env.LINE_PHASE_FIELD_ID || "4";
+
+  const lines = (detail.Line || bill.Line || []).map((line) => ({
+    ...line,
+    PHASE: getCustomFieldValue(line.CustomField, phaseFieldId, "PHASE")
+  }));
 
   return {
     ...detail,
+    Line: lines,
     "Customer PO#": getCustomFieldValue(
       customFields,
       billingCustomColumnAliases["Customer PO#"],
