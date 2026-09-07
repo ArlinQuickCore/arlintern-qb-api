@@ -6,6 +6,7 @@ const getCompanyUrl = (realmId, resource) =>
 const quickBooksRequestConfig = {
   timeout: 20000
 };
+const quickBooksMinorVersion = process.env.QBO_MINOR_VERSION || "75";
 
 async function retryAfterRefresh(requestFn, label, emptyResponse) {
   for (let attempt = 0; attempt <= 3; attempt += 1) {
@@ -72,7 +73,10 @@ async function queryResource(resource, label, queryOptions = {}) {
     return retryAfterRefresh(async () => {
       const currentTokens = qbTokenService.getTokens();
       const response = await axios.get(
-        getCompanyUrl(currentTokens.realmId, `query?query=${query}`),
+        getCompanyUrl(
+          currentTokens.realmId,
+          `query?query=${query}&minorversion=${quickBooksMinorVersion}`
+        ),
         {
           ...quickBooksRequestConfig,
           headers: {
@@ -161,7 +165,10 @@ async function getResourceDetails(resource, responseKey, ids, label) {
     const results = await Promise.all(batch.map((id) => retryAfterRefresh(async () => {
       const currentTokens = qbTokenService.getTokens();
       const response = await axios.get(
-        getCompanyUrl(currentTokens.realmId, `${resource.toLowerCase()}/${encodeURIComponent(id)}`),
+        getCompanyUrl(
+          currentTokens.realmId,
+          `${resource.toLowerCase()}/${encodeURIComponent(id)}?minorversion=${quickBooksMinorVersion}`
+        ),
         {
           ...quickBooksRequestConfig,
           headers: {
