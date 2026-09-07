@@ -32,7 +32,8 @@ test("builds a paid billing query with selected columns", async () => {
             CustomField: [
               { DefinitionId: "10", Name: "Customer PO#", StringValue: "CPO-100" },
               { DefinitionId: "20", Name: "Supplier PO#", StringValue: "SPO-200" },
-              { DefinitionId: "30", Name: "Vendor Type", StringValue: "PO Vendor" }
+              { DefinitionId: "30", Name: "Vendor Type", StringValue: "PO Vendor" },
+              { DefinitionId: "40", Name: "Numeric Field", NumberValue: 42 }
             ]
           }
         }

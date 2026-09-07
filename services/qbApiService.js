@@ -270,11 +270,17 @@ const billingColumnAliases = {
 };
 
 function getCustomFieldValue(customFields, definitionId, fieldName) {
-  return customFields?.find(
+  const field = customFields?.find(
     (field) =>
       String(field.DefinitionId) === String(definitionId) ||
       field.Name?.trim().toLowerCase() === fieldName.toLowerCase()
-  )?.StringValue || null;
+  );
+
+  if (!field) {
+    return null;
+  }
+
+  return field.StringValue ?? field.NumberValue ?? field.BooleanValue ?? field.DateValue ?? null;
 }
 
 function addBillingColumnAliases(bill, billDetails = new Map()) {
