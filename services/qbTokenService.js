@@ -11,6 +11,10 @@ const defaultTokens = {
   realmId: null
 };
 
+const getClientId = () => process.env.CLIENT_ID || process.env.QB_CLIENT_ID;
+const getClientSecret = () => process.env.CLIENT_SECRET || process.env.QB_CLIENT_SECRET;
+const getRedirectUri = () => process.env.REDIRECT_URI || process.env.QB_REDIRECT_URI;
+
 const ensureTokenStorage = () => {
   const tokenDir = path.dirname(TOKEN_STORAGE_PATH);
 
@@ -76,17 +80,17 @@ const qbTokenService = {
     const url = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 
     const authHeader = Buffer.from(
-      `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
+      `${getClientId()}:${getClientSecret()}`
     ).toString("base64");
 
     const payload = qs.stringify({
       grant_type: "authorization_code",
       code,
-      redirect_uri: process.env.REDIRECT_URI
+      redirect_uri: getRedirectUri()
     });
 
     console.log("QB token exchange request", {
-      redirect_uri: process.env.REDIRECT_URI,
+      redirect_uri: getRedirectUri(),
       grant_type: "authorization_code",
       hasCode: Boolean(code),
       realmId
@@ -118,7 +122,7 @@ const qbTokenService = {
     const url = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 
     const authHeader = Buffer.from(
-      `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
+      `${getClientId()}:${getClientSecret()}`
     ).toString("base64");
 
     const payload = qs.stringify({
@@ -127,7 +131,7 @@ const qbTokenService = {
     });
 
     console.log("QB refresh request", {
-      redirect_uri: process.env.REDIRECT_URI,
+      redirect_uri: getRedirectUri(),
       grant_type: "refresh_token",
       hasRefreshToken: Boolean(currentTokens.refresh_token)
     });

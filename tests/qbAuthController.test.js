@@ -40,3 +40,15 @@ test("builds the QuickBooks OAuth login URL with the configured redirect URI", (
   assert.match(url, /redirect_uri=https%3A%2F%2Fexample.com%2Foauth%2Fcallback/);
   assert.match(url, /response_type=code/);
 });
+
+test("supports QB-prefixed OAuth environment variables", () => {
+  delete process.env.CLIENT_ID;
+  delete process.env.REDIRECT_URI;
+  process.env.QB_CLIENT_ID = "qb-client-id";
+  process.env.QB_REDIRECT_URI = "https://example.com/qb-callback";
+
+  const url = qbAuthController.buildAuthorizationUrl();
+
+  assert.match(url, /client_id=qb-client-id/);
+  assert.match(url, /redirect_uri=https%3A%2F%2Fexample.com%2Fqb-callback/);
+});
