@@ -14,6 +14,7 @@ const defaultTokens = {
 const getClientId = () => process.env.CLIENT_ID || process.env.QB_CLIENT_ID;
 const getClientSecret = () => process.env.CLIENT_SECRET || process.env.QB_CLIENT_SECRET;
 const getRedirectUri = () => process.env.REDIRECT_URI || process.env.QB_REDIRECT_URI;
+const getEnvironmentToken = (name, fallback) => process.env[name] || fallback;
 
 const ensureTokenStorage = () => {
   const tokenDir = path.dirname(TOKEN_STORAGE_PATH);
@@ -46,7 +47,12 @@ let storedTokens = (() => {
 const qbTokenService = {
   loadTokens() {
     if (process.env.VERCEL) {
-      return storedTokens;
+      return {
+        ...storedTokens,
+        access_token: getEnvironmentToken("QB_ACCESS_TOKEN", storedTokens.access_token),
+        refresh_token: getEnvironmentToken("QB_REFRESH_TOKEN", storedTokens.refresh_token),
+        realmId: getEnvironmentToken("QB_REALM_ID", storedTokens.realmId)
+      };
     }
 
     try {
