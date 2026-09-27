@@ -128,63 +128,125 @@ const qbTokenService = {
     return this.saveTokens(nextTokens);
   },
 
+  // De-dupes concurrent refresh calls within this process; combined with the
+  // distributed lock below, this stops Power BI's parallel requests from each
+  // racing to use the same single-use, rotating QuickBooks refresh token.
+  _refreshPromise: null,
+
   async refreshAccessToken() {
+    if (this._refreshPromise) {
+      return this._refreshPromise;
+    }
+
+    this._refreshPromise = this._doRefreshAccessToken();
+
+    try {
+      return await this._refreshPromise;
+    } finally {
+      this._refreshPromise = null;
+    }
+  },
+
+  async _waitForConcurrentRefresh(staleRefreshToken) {
+    const attempts = 10;
+    const delayMs = 500;
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      const latestTokens = await this.getTokens();
+
+      if (latestTokens.refresh_token && latestTokens.refresh_token !== staleRefreshToken) {
+        return latestTokens;
+      }
+
+      if (!latestTokens.access_token && !latestTokens.refresh_token) {
+        throw new Error("QuickBooks refresh token is invalid. Re-authorize the app.");
+      }
+    }
+
+    throw new Error("Timed out waiting for an in-progress QuickBooks token refresh.");
+  },
+
+  async _doRefreshAccessToken() {
     const currentTokens = await this.getTokens();
 
     if (!currentTokens.refresh_token) {
       throw new Error("No refresh token available. Re-authorize the app.");
     }
 
-    const url = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+    const lockToken = await qbStorageService.acquireRefreshLock();
 
-    const authHeader = Buffer.from(
-      `${getClientId()}:${getClientSecret()}`
-    ).toString("base64");
-
-    const payload = qs.stringify({
-      grant_type: "refresh_token",
-      refresh_token: currentTokens.refresh_token
-    });
-
-    console.log("QB refresh request", {
-      redirect_uri: getRedirectUri(),
-      grant_type: "refresh_token",
-      hasRefreshToken: Boolean(currentTokens.refresh_token)
-    });
+    if (!lockToken) {
+      return this._waitForConcurrentRefresh(currentTokens.refresh_token);
+    }
 
     try {
-      const response = await axios.post(url, payload, {
-        headers: {
-          Authorization: `Basic ${authHeader}`,
-          "Content-Type": "application/x-www-form-urlencoded"
-        }
-      });
+      // Another request may have refreshed while we were waiting for the lock.
+      const latestTokens = await this.getTokens();
 
-      const refreshedTokens = {
-        ...currentTokens,
-        access_token: response.data.access_token,
-        refresh_token: response.data.refresh_token || currentTokens.refresh_token
-      };
-
-      return this.saveTokens(refreshedTokens);
-    } catch (error) {
-      const errorData = error.response?.data || {};
-      const isInvalidRefreshToken =
-        errorData.error === "invalid_grant" ||
-        /incorrect or invalid refresh token/i.test(errorData.error_description || "") ||
-        /invalid refresh token/i.test(error.message || "");
-
-      if (isInvalidRefreshToken) {
-        await this.saveTokens({
-          access_token: null,
-          refresh_token: null,
-          realmId: null
-        });
-
-        throw new Error("QuickBooks refresh token is invalid. Re-authorize the app.");
+      if (latestTokens.refresh_token !== currentTokens.refresh_token) {
+        return latestTokens;
       }
 
-      throw error;
+      const url = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+
+      const authHeader = Buffer.from(
+        `${getClientId()}:${getClientSecret()}`
+      ).toString("base64");
+
+      const payload = qs.stringify({
+        grant_type: "refresh_token",
+        refresh_token: latestTokens.refresh_token
+      });
+
+      console.log("QB refresh request", {
+        redirect_uri: getRedirectUri(),
+        grant_type: "refresh_token",
+        hasRefreshToken: Boolean(latestTokens.refresh_token)
+      });
+
+      try {
+        const response = await axios.post(url, payload, {
+          headers: {
+            Authorization: `Basic ${authHeader}`,
+            "Content-Type": "application/x-www-form-urlencoded"
+          }
+        });
+
+        const refreshedTokens = {
+          ...latestTokens,
+          access_token: response.data.access_token,
+          refresh_token: response.data.refresh_token || latestTokens.refresh_token
+        };
+
+        return await this.saveTokens(refreshedTokens);
+      } catch (error) {
+        const errorData = error.response?.data || {};
+        const isInvalidRefreshToken =
+          errorData.error === "invalid_grant" ||
+          /incorrect or invalid refresh token/i.test(errorData.error_description || "") ||
+          /invalid refresh token/i.test(error.message || "");
+
+        if (isInvalidRefreshToken) {
+          // Another request may have already rotated this token successfully.
+          const recheckedTokens = await this.getTokens();
+          if (recheckedTokens.refresh_token && recheckedTokens.refresh_token !== latestTokens.refresh_token) {
+            return recheckedTokens;
+          }
+
+          await this.saveTokens({
+            access_token: null,
+            refresh_token: null,
+            realmId: null
+          });
+
+          throw new Error("QuickBooks refresh token is invalid. Re-authorize the app.");
+        }
+
+        throw error;
+      }
+    } finally {
+      await qbStorageService.releaseRefreshLock(lockToken);
     }
   },
 
