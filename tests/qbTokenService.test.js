@@ -108,10 +108,10 @@ test("builds an unpaid billing query", async () => {
   }
 });
 
-test("persists tokens to disk and loads them back", () => {
+test("persists tokens to disk and loads them back", async () => {
   fs.rmSync(tokenDir, { recursive: true, force: true });
 
-  const saved = qbTokenService.saveTokens({
+  const saved = await qbTokenService.saveTokens({
     access_token: "test-access-token",
     refresh_token: "test-refresh-token",
     realmId: "1234567890"
@@ -130,7 +130,7 @@ test("persists tokens to disk and loads them back", () => {
     realmId: "1234567890"
   });
 
-  const loaded = qbTokenService.loadTokens();
+  const loaded = await qbTokenService.loadTokens();
   assert.deepEqual(loaded, {
     access_token: "test-access-token",
     refresh_token: "test-refresh-token",
@@ -146,7 +146,7 @@ test("refreshes expired tokens and retries the request once", async () => {
   }));
 
   const refreshMock = mock.method(qbTokenService, "refreshAccessToken", async () => {
-    qbTokenService.saveTokens({
+    await qbTokenService.saveTokens({
       access_token: "fresh-token",
       refresh_token: "new-refresh-token",
       realmId: "1234567890"
@@ -191,7 +191,7 @@ test("refreshes expired tokens and retries the request once", async () => {
 });
 
 test("clears stored tokens when QuickBooks rejects an invalid refresh token", async () => {
-  qbTokenService.saveTokens({
+  await qbTokenService.saveTokens({
     access_token: "stale-token",
     refresh_token: "expired-refresh-token",
     realmId: "1234567890"
@@ -215,7 +215,7 @@ test("clears stored tokens when QuickBooks rejects an invalid refresh token", as
       /re-authorize the app/i
     );
 
-    const tokens = qbTokenService.getTokens();
+    const tokens = await qbTokenService.getTokens();
     assert.deepEqual(tokens, {
       access_token: null,
       refresh_token: null,

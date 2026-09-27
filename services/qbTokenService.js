@@ -2,6 +2,7 @@ import axios from "axios";
 import fs from "fs";
 import path from "path";
 import qs from "qs";
+import qbStorageService from "./qbStorageService.js";
 
 const TOKEN_STORAGE_PATH = path.resolve(process.cwd(), "data", "qb_tokens.json");
 
@@ -28,53 +29,62 @@ const ensureTokenStorage = () => {
   }
 };
 
-let storedTokens = (() => {
+const loadTokensFromFile = () => {
   try {
     ensureTokenStorage();
     const raw = fs.readFileSync(TOKEN_STORAGE_PATH, "utf8");
     const parsed = JSON.parse(raw);
 
-    return {
-      ...defaultTokens,
-      ...parsed
-    };
+    return { ...defaultTokens, ...parsed };
   } catch (error) {
-    console.warn("Could not load persisted QB tokens:", error.message);
+    console.warn("Unable to read stored QB tokens:", error.message);
     return { ...defaultTokens };
   }
-})();
+};
+
+let storedTokens = loadTokensFromFile();
 
 const qbTokenService = {
-  loadTokens() {
-    if (process.env.VERCEL) {
-      return {
-        ...storedTokens,
-        access_token: getEnvironmentToken("QB_ACCESS_TOKEN", storedTokens.access_token),
-        refresh_token: getEnvironmentToken("QB_REFRESH_TOKEN", storedTokens.refresh_token),
-        realmId: getEnvironmentToken("QB_REALM_ID", storedTokens.realmId)
+  // Vercel KV is the source of truth in serverless deployments so refreshed
+  // tokens survive across Lambda instances; local dev keeps using the JSON file.
+  async loadTokens() {
+    if (qbStorageService.isConfigured()) {
+      const kvTokens = await qbStorageService.getTokens();
+
+      if (kvTokens) {
+        storedTokens = { ...defaultTokens, ...kvTokens };
+        return storedTokens;
+      }
+
+      // One-time migration path for existing env-var based deployments.
+      const seeded = {
+        access_token: getEnvironmentToken("QB_ACCESS_TOKEN", null),
+        refresh_token: getEnvironmentToken("QB_REFRESH_TOKEN", null),
+        realmId: getEnvironmentToken("QB_REALM_ID", null)
       };
+
+      storedTokens = { ...defaultTokens, ...seeded };
+
+      if (storedTokens.access_token || storedTokens.refresh_token) {
+        await qbStorageService.saveTokens(storedTokens);
+      }
+
+      return storedTokens;
     }
 
-    try {
-      ensureTokenStorage();
-      const raw = fs.readFileSync(TOKEN_STORAGE_PATH, "utf8");
-      const parsed = JSON.parse(raw);
-      storedTokens = { ...defaultTokens, ...parsed };
-      return storedTokens;
-    } catch (error) {
-      console.warn("Unable to read stored QB tokens:", error.message);
-      storedTokens = { ...defaultTokens };
-      return storedTokens;
-    }
+    storedTokens = loadTokensFromFile();
+    return storedTokens;
   },
 
-  saveTokens(nextTokens) {
+  async saveTokens(nextTokens) {
     storedTokens = {
       ...defaultTokens,
       ...nextTokens
     };
 
-    if (!process.env.VERCEL) {
+    if (qbStorageService.isConfigured()) {
+      await qbStorageService.saveTokens(storedTokens);
+    } else {
       ensureTokenStorage();
       fs.writeFileSync(TOKEN_STORAGE_PATH, JSON.stringify(storedTokens, null, 2));
     }
@@ -119,7 +129,7 @@ const qbTokenService = {
   },
 
   async refreshAccessToken() {
-    const currentTokens = this.getTokens();
+    const currentTokens = await this.getTokens();
 
     if (!currentTokens.refresh_token) {
       throw new Error("No refresh token available. Re-authorize the app.");
@@ -165,7 +175,7 @@ const qbTokenService = {
         /invalid refresh token/i.test(error.message || "");
 
       if (isInvalidRefreshToken) {
-        this.saveTokens({
+        await this.saveTokens({
           access_token: null,
           refresh_token: null,
           realmId: null
@@ -178,7 +188,7 @@ const qbTokenService = {
     }
   },
 
-  clearTokens() {
+  async clearTokens() {
     return this.saveTokens({
       access_token: null,
       refresh_token: null,
@@ -186,9 +196,10 @@ const qbTokenService = {
     });
   },
 
-  getTokens() {
+  async getTokens() {
     return this.loadTokens();
   }
 };
 
 export default qbTokenService;
+

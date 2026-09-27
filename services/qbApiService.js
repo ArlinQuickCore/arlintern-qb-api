@@ -49,7 +49,7 @@ async function retryAfterRefresh(requestFn, label, emptyResponse) {
 }
 
 async function queryResource(resource, label, queryOptions = {}) {
-  const { access_token, realmId } = qbTokenService.getTokens();
+  const { access_token, realmId } = await qbTokenService.getTokens();
 
   if (!access_token || !realmId) {
     return {
@@ -71,7 +71,7 @@ async function queryResource(resource, label, queryOptions = {}) {
     const query = encodeURIComponent(`select ${select} from ${resource}${where}${pagination}`);
 
     return retryAfterRefresh(async () => {
-      const currentTokens = qbTokenService.getTokens();
+      const currentTokens = await qbTokenService.getTokens();
       const response = await axios.get(
         getCompanyUrl(
           currentTokens.realmId,
@@ -126,14 +126,14 @@ async function queryResource(resource, label, queryOptions = {}) {
 }
 
 async function createResource(resource, payload, label) {
-  const { access_token, realmId } = qbTokenService.getTokens();
+  const { access_token, realmId } = await qbTokenService.getTokens();
 
   if (!access_token || !realmId) {
     throw new Error("No QuickBooks token or realm is stored yet. Complete OAuth first.");
   }
 
   const requestFn = async () => {
-    const currentTokens = qbTokenService.getTokens();
+    const currentTokens = await qbTokenService.getTokens();
     const response = await axios.post(getCompanyUrl(currentTokens.realmId, resource), payload, {
       headers: {
         Authorization: `Bearer ${currentTokens.access_token}`,
@@ -163,7 +163,7 @@ async function getResourceDetails(resource, responseKey, ids, label) {
   for (let index = 0; index < ids.length; index += concurrency) {
     const batch = ids.slice(index, index + concurrency);
     const results = await Promise.all(batch.map((id) => retryAfterRefresh(async () => {
-      const currentTokens = qbTokenService.getTokens();
+      const currentTokens = await qbTokenService.getTokens();
       const response = await axios.get(
         getCompanyUrl(
           currentTokens.realmId,
@@ -194,7 +194,7 @@ async function getResourceDetails(resource, responseKey, ids, label) {
 }
 
 async function getCustomers() {
-  const { access_token, realmId } = qbTokenService.getTokens();
+  const { access_token, realmId } = await qbTokenService.getTokens();
 
   if (!access_token || !realmId) {
     return {
@@ -208,7 +208,7 @@ async function getCustomers() {
   const url = `https://quickbooks.api.intuit.com/v3/company/${realmId}/query?query=select * from Customer`;
 
   const requestFn = async () => {
-    const currentTokens = qbTokenService.getTokens();
+    const currentTokens = await qbTokenService.getTokens();
     const response = await axios.get(
       `https://quickbooks.api.intuit.com/v3/company/${currentTokens.realmId}/query?query=select * from Customer`,
       {
@@ -405,7 +405,7 @@ async function createBilling(payload) {
 }
 
 async function createCustomer(payload) {
-  const { access_token, realmId } = qbTokenService.getTokens();
+  const { access_token, realmId } = await qbTokenService.getTokens();
 
   if (!access_token || !realmId) {
     throw new Error("No QuickBooks token or realm is stored yet. Complete OAuth first.");
@@ -414,7 +414,7 @@ async function createCustomer(payload) {
   const url = `https://quickbooks.api.intuit.com/v3/company/${realmId}/customer`;
 
   const requestFn = async () => {
-    const currentTokens = qbTokenService.getTokens();
+    const currentTokens = await qbTokenService.getTokens();
     const response = await axios.post(
       `https://quickbooks.api.intuit.com/v3/company/${currentTokens.realmId}/customer`,
       payload,

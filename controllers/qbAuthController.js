@@ -54,7 +54,7 @@ const qbAuthController = {
 
   async getStoredTokens(req, res) {
     try {
-      const tokens = qbTokenService.getTokens();
+      const tokens = await qbTokenService.getTokens();
 
       return res.status(200).json({
         message: "Stored tokens retrieved successfully",
