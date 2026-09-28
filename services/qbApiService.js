@@ -475,19 +475,32 @@ async function getInvoices(options = {}) {
 }
 
 const transactionTypes = new Set([
+  "CreditCardCharge",
+  "Check",
   "Invoice",
-  "Bill",
-  "Payment",
-  "BillPayment",
-  "Deposit",
-  "Purchase",
+  "ReceivePayment",
   "JournalEntry",
-  "CreditMemo",
+  "Bill",
+  "CreditCardCredit",
   "VendorCredit",
-  "Estimate",
-  "SalesReceipt",
+  "Credit",
+  "BillPaymentCheck",
+  "BillPaymentCreditCard",
+  "Charge",
   "Transfer",
-  "Check"
+  "Deposit",
+  "Statement",
+  "BillableCharge",
+  "TimeActivity",
+  "CashPurchase",
+  "SalesReceipt",
+  "CreditMemo",
+  "CreditRefund",
+  "Estimate",
+  "InventoryQuantityAdjustment",
+  "PurchaseOrder",
+  "GlobalTaxPayment",
+  "GlobalTaxAdjustment"
 ]);
 
 async function getTransactionReport(reportName, params, label) {
