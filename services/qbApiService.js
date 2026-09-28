@@ -561,12 +561,29 @@ async function getTransactions(options = {}) {
     throw new Error("Invalid transaction type. Use valid QuickBooks transaction type names.");
   }
 
-  const params = {
-    ...dateParams,
-    ...(requestedTypes ? { transaction_type: requestedTypes.join(",") } : {})
-  };
+  // QuickBooks' transaction_type report param only accepts one value at a time,
+  // so fan out a request per requested type and merge the report rows together.
+  if (!requestedTypes || requestedTypes.length <= 1) {
+    const params = {
+      ...dateParams,
+      ...(requestedTypes ? { transaction_type: requestedTypes[0] } : {})
+    };
 
-  return getTransactionReport("TransactionList", params, "transactions");
+    return getTransactionReport("TransactionList", params, "transactions");
+  }
+
+  const reports = await Promise.all(
+    requestedTypes.map((type) =>
+      getTransactionReport("TransactionList", { ...dateParams, transaction_type: type }, "transactions")
+    )
+  );
+
+  const mergedRows = reports.flatMap((report) => report.Rows?.Row || []);
+
+  return {
+    ...reports[0],
+    Rows: { Row: mergedRows }
+  };
 }
 
 async function createCustomer(payload) {
