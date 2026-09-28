@@ -404,6 +404,158 @@ async function createBilling(payload) {
   return createResource("bill", payload, "billing");
 }
 
+const invoiceColumns = new Set([
+  "Id",
+  "SyncToken",
+  "MetaData",
+  "CustomField",
+  "DocNumber",
+  "TxnDate",
+  "CurrencyRef",
+  "ExchangeRate",
+  "PrivateNote",
+  "Line",
+  "CustomerRef",
+  "CustomerMemo",
+  "BillEmail",
+  "BillAddr",
+  "ShipAddr",
+  "SalesTermRef",
+  "DueDate",
+  "LinkedTxn",
+  "TotalAmt",
+  "HomeTotalAmt",
+  "Balance",
+  "PrintStatus",
+  "EmailStatus",
+  "TxnTaxDetail"
+]);
+
+async function getInvoices(options = {}) {
+  const requestedColumns = options.columns?.length
+    ? [...new Set(options.columns)]
+    : null;
+
+  if (requestedColumns && requestedColumns.some((column) => !invoiceColumns.has(column))) {
+    throw new Error("Invalid invoice column. Use valid QuickBooks Invoice fields.");
+  }
+
+  const status = options.status || (options.paidOnly ? "paid" : "all");
+  const whereByStatus = {
+    paid: "Balance = '0'",
+    unpaid: "Balance > '0'",
+    all: undefined
+  };
+
+  if (!(status in whereByStatus)) {
+    throw new Error("Invalid invoice status. Use paid, unpaid, or all.");
+  }
+
+  const dateFilters = [];
+  for (const [name, value, operator] of [
+    ["startDate", options.startDate, ">="],
+    ["endDate", options.endDate, "<="]
+  ]) {
+    if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`${name} must use YYYY-MM-DD format.`);
+    }
+
+    if (value) {
+      dateFilters.push(`TxnDate ${operator} '${value}'`);
+    }
+  }
+
+  const filters = [whereByStatus[status], ...dateFilters].filter(Boolean);
+
+  return queryResource("Invoice", "invoices", {
+    columns: requestedColumns,
+    where: filters.length ? filters.join(" and ") : undefined,
+    fetchAll: true
+  });
+}
+
+const transactionTypes = new Set([
+  "Invoice",
+  "Bill",
+  "Payment",
+  "BillPayment",
+  "Deposit",
+  "Purchase",
+  "JournalEntry",
+  "CreditMemo",
+  "VendorCredit",
+  "Estimate",
+  "SalesReceipt",
+  "Transfer",
+  "Check"
+]);
+
+async function getTransactionReport(reportName, params, label) {
+  const { access_token, realmId } = await qbTokenService.getTokens();
+
+  if (!access_token || !realmId) {
+    return {
+      Rows: {},
+      message: "No QuickBooks token or realm is stored yet. Complete OAuth first."
+    };
+  }
+
+  const searchParams = new URLSearchParams({
+    minorversion: quickBooksMinorVersion,
+    ...params
+  });
+
+  const requestFn = async () => {
+    const currentTokens = await qbTokenService.getTokens();
+    const response = await axios.get(
+      getCompanyUrl(currentTokens.realmId, `reports/${reportName}?${searchParams.toString()}`),
+      {
+        ...quickBooksRequestConfig,
+        headers: {
+          Authorization: `Bearer ${currentTokens.access_token}`,
+          Accept: "application/json"
+        }
+      }
+    );
+
+    return response.data;
+  };
+
+  return retryAfterRefresh(requestFn, label, { Rows: {} });
+}
+
+async function getTransactions(options = {}) {
+  const dateParams = {};
+
+  for (const [name, param, value] of [
+    ["startDate", "start_date", options.startDate],
+    ["endDate", "end_date", options.endDate]
+  ]) {
+    if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`${name} must use YYYY-MM-DD format.`);
+    }
+
+    if (value) {
+      dateParams[param] = value;
+    }
+  }
+
+  const requestedTypes = options.transactionTypes?.length
+    ? [...new Set(options.transactionTypes)]
+    : null;
+
+  if (requestedTypes && requestedTypes.some((type) => !transactionTypes.has(type))) {
+    throw new Error("Invalid transaction type. Use valid QuickBooks transaction type names.");
+  }
+
+  const params = {
+    ...dateParams,
+    ...(requestedTypes ? { transaction_type: requestedTypes.join(",") } : {})
+  };
+
+  return getTransactionReport("TransactionList", params, "transactions");
+}
+
 async function createCustomer(payload) {
   const { access_token, realmId } = await qbTokenService.getTokens();
 
@@ -444,7 +596,7 @@ async function createCustomer(payload) {
 const qbApiService = {
   getCustomers,
   createCustomer,
-  getInvoices: () => queryResource("Invoice", "invoices"),
+  getInvoices,
   createInvoice: (payload) => createResource("invoice", payload, "invoices"),
   getItems: () => queryResource("Item", "items"),
   createItem: (payload) => createResource("item", payload, "items"),
@@ -453,7 +605,8 @@ const qbApiService = {
   getBillings,
   createBilling,
   getVendors: () => queryResource("Vendor", "vendors"),
-  createVendor: (payload) => createResource("vendor", payload, "vendors")
+  createVendor: (payload) => createResource("vendor", payload, "vendors"),
+  getTransactions
 };
 
 export default qbApiService;
