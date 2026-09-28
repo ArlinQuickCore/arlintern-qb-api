@@ -6,9 +6,14 @@ import axios from "axios";
 import { mock } from "node:test";
 import qbTokenService from "../services/qbTokenService.js";
 import qbApiService from "../services/qbApiService.js";
+import qbStorageService from "../services/qbStorageService.js";
 
 const tokenDir = path.resolve("data");
 const tokenFile = path.join(tokenDir, "qb_tokens.json");
+
+// Tests must never touch real Redis even if KV/Upstash env vars happen to be
+// present (e.g. a Vercel build machine); force the local file-based path.
+mock.method(qbStorageService, "isConfigured", () => false);
 
 test("exposes QuickBooks billing resource support", () => {
   assert.equal(typeof qbApiService.getBillings, "function");
