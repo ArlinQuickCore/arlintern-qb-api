@@ -9,14 +9,25 @@ function powerBiAuth(req, res, next) {
     });
   }
 
+  // Accepts Bearer, X-API-Key, or Basic (key as password) since Power BI's
+  // credential dialogs can send any of these.
   const authorization = req.get("authorization") || "";
-  const [scheme, suppliedKey] = authorization.split(" ");
+  const [scheme, credential] = authorization.split(" ");
+  let suppliedKey = req.get("x-api-key") || "";
+
+  if (scheme?.toLowerCase() === "bearer") {
+    suppliedKey = credential || "";
+  } else if (scheme?.toLowerCase() === "basic" && credential) {
+    const decoded = Buffer.from(credential, "base64").toString("utf8");
+    suppliedKey = decoded.slice(decoded.indexOf(":") + 1);
+  }
+
   const expectedBuffer = Buffer.from(expectedKey);
-  const suppliedBuffer = Buffer.from(suppliedKey || "");
+  const suppliedBuffer = Buffer.from(suppliedKey);
   const validKey = expectedBuffer.length === suppliedBuffer.length &&
     crypto.timingSafeEqual(expectedBuffer, suppliedBuffer);
 
-  if (scheme?.toLowerCase() !== "bearer" || !validKey) {
+  if (!validKey) {
     return res.status(401).json({ error: "Invalid or missing API key." });
   }
 

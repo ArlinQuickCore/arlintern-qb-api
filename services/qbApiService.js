@@ -158,7 +158,7 @@ async function createResource(resource, payload, label) {
 
 async function getResourceDetails(resource, responseKey, ids, label) {
   const details = new Map();
-  const concurrency = 2;
+  const concurrency = 5;
 
   for (let index = 0; index < ids.length; index += concurrency) {
     const batch = ids.slice(index, index + concurrency);
@@ -179,9 +179,17 @@ async function getResourceDetails(resource, responseKey, ids, label) {
       );
 
       return response.data?.[responseKey];
-    }, label)));
+    }, label).catch((error) => {
+      // One failed detail lookup must not fail the whole list; fall back to the query row.
+      console.warn(`Failed ${label} for ${id}:`, error.message);
+      return null;
+    })));
 
     results.forEach((detail, resultIndex) => {
+      if (detail?.status === "unauthorized") {
+        return;
+      }
+
       if (detail?.Id) {
         details.set(String(detail.Id), detail);
       } else if (detail) {
