@@ -8,7 +8,8 @@ const qbCreditMemoController = {
         id: req.query.id,
         status: req.query.status,
         startDate: req.query.startDate,
-        endDate: req.query.endDate
+        endDate: req.query.endDate,
+        details: req.query.details === "true"
       });
       res.json(data);
     } catch (err) {

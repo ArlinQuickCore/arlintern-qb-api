@@ -600,20 +600,24 @@ const creditMemoStatusFilters = {
   all: undefined
 };
 
-function getLinkedRefundReceiptIds(creditMemo) {
+// QBO records a credit-memo refund as a linked RefundReceipt, or as a
+// Check/Expense with the credit memo added in its "Add to check" panel.
+const refundLinkedTxnTypes = new Set(["RefundReceipt", "Check", "Expense"]);
+
+function getLinkedTransactions(creditMemo) {
   return (creditMemo.LinkedTxn || [])
-    .filter((txn) => txn.TxnType === "RefundReceipt")
-    .map((txn) => txn.TxnId)
-    .filter(Boolean);
+    .filter((txn) => txn.TxnId && txn.TxnType)
+    .map((txn) => ({ type: txn.TxnType, id: txn.TxnId }));
 }
 
 // Shapes a CreditMemo into the transaction-list table columns (date, type,
 // ref no., contact, due date, balance, total amount, memo, last modified, status).
 function toCreditMemoTableRow(creditMemo) {
-  const refundReceiptIds = getLinkedRefundReceiptIds(creditMemo);
+  const linkedTransactions = getLinkedTransactions(creditMemo);
+  const refundTransactions = linkedTransactions.filter((txn) => refundLinkedTxnTypes.has(txn.type));
   const balance = creditMemo.Balance ?? 0;
   const totalAmount = creditMemo.TotalAmt ?? 0;
-  const refundReceived = refundReceiptIds.length > 0;
+  const refundReceived = refundTransactions.length > 0;
 
   let status = "Open";
   if (refundReceived) {
@@ -637,7 +641,8 @@ function toCreditMemoTableRow(creditMemo) {
     lastModifiedDate: creditMemo.MetaData?.LastUpdatedTime || null,
     status,
     refundReceived,
-    refundReceiptIds
+    refundTransactionIds: refundTransactions.map((txn) => txn.id),
+    linkedTransactions
   };
 }
 
@@ -682,18 +687,39 @@ async function getCreditMemos(options = {}) {
   });
 
   const { QueryResponse, ...rest } = response;
-  let creditMemos = (QueryResponse?.CreditMemo || []).map(toCreditMemoTableRow);
+  let creditMemos = QueryResponse?.CreditMemo || [];
+
+  // Query responses can omit LinkedTxn/Balance, so details=true re-reads each
+  // entity for reliable refund detection. Capped because each read is a call.
+  if (options.details && creditMemos.length) {
+    if (creditMemos.length > 100) {
+      throw new Error("Too many credit memos for details. Narrow the filters (docNumber, id, dates) to 100 or fewer.");
+    }
+
+    const creditMemoDetails = await getResourceDetails(
+      "CreditMemo",
+      "CreditMemo",
+      creditMemos.map((creditMemo) => creditMemo.Id).filter(Boolean),
+      "credit memo details"
+    );
+
+    creditMemos = creditMemos.map(
+      (creditMemo) => creditMemoDetails.get(String(creditMemo.Id)) || creditMemo
+    );
+  }
+
+  let rows = creditMemos.map(toCreditMemoTableRow);
 
   // A refund counts as received once the credit memo is linked to a refund
-  // receipt; this also catches partial refunds that still carry a balance.
+  // transaction; this also catches partial refunds that still carry a balance.
   if (status === "refunded") {
-    creditMemos = creditMemos.filter((creditMemo) => creditMemo.refundReceived);
+    rows = rows.filter((row) => row.refundReceived);
   }
 
   return {
     ...rest,
-    count: creditMemos.length,
-    creditMemos
+    count: rows.length,
+    creditMemos: rows
   };
 }
 

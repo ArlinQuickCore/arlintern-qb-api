@@ -85,7 +85,8 @@ test("returns credit memo table details when the refund is received", async () =
       lastModifiedDate: "2026-08-13T17:30:15.842202Z",
       status: "Refunded",
       refundReceived: true,
-      refundReceiptIds: ["100"]
+      refundTransactionIds: ["100"],
+      linkedTransactions: [{ type: "RefundReceipt", id: "100" }]
     });
   } finally {
     getTokensMock.mock.restore();
@@ -133,6 +134,61 @@ test("builds an open credit memo query with a balance filter", async () => {
     assert.equal(result.count, 1);
     assert.equal(result.creditMemos[0].status, "Open");
     assert.equal(result.creditMemos[0].refundReceived, false);
+  } finally {
+    getTokensMock.mock.restore();
+    axiosGetMock.mock.restore();
+  }
+});
+
+test("detects refunds from linked checks when full details are requested", async () => {
+  const getTokensMock = mockTokens();
+  const creditMemoWithoutLinks = { ...refundedCreditMemo, Id: "200", LinkedTxn: undefined };
+  const axiosGetMock = mock.method(axios, "get", async (url) => {
+    if (url.includes("/creditmemo/200")) {
+      return {
+        data: {
+          CreditMemo: {
+            ...creditMemoWithoutLinks,
+            LinkedTxn: [{ TxnId: "300", TxnType: "Check" }]
+          }
+        }
+      };
+    }
+
+    return { data: { url, QueryResponse: { CreditMemo: [creditMemoWithoutLinks] } } };
+  });
+
+  try {
+    const result = await qbApiService.getCreditMemos({ docNumber: "IN92468", details: true });
+
+    assert.equal(result.count, 1);
+    const row = result.creditMemos[0];
+    assert.equal(row.status, "Refunded");
+    assert.equal(row.refundReceived, true);
+    assert.deepEqual(row.refundTransactionIds, ["300"]);
+    assert.deepEqual(row.linkedTransactions, [{ type: "Check", id: "300" }]);
+  } finally {
+    getTokensMock.mock.restore();
+    axiosGetMock.mock.restore();
+  }
+});
+
+test("rejects details requests for large credit memo result sets", async () => {
+  const getTokensMock = mockTokens();
+  const axiosGetMock = mock.method(axios, "get", async (url) => ({
+    data: {
+      url,
+      QueryResponse: {
+        CreditMemo: Array.from({ length: 101 }, (_, index) => ({ Id: String(index + 1) }))
+      }
+    }
+  }));
+
+  try {
+    await assert.rejects(
+      () => qbApiService.getCreditMemos({ status: "all", details: true }),
+      /Too many credit memos for details/
+    );
   } finally {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();
