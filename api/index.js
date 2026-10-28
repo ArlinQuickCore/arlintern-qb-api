@@ -8,6 +8,7 @@ import itemRoutes from "../routes/items.js";
 import vendorRoutes from "../routes/vendors.js";
 import customerRoutes from "../routes/customers.js";
 import billingRoutes from "../routes/billing.js";
+import creditMemoRoutes from "../routes/creditMemos.js";
 
 const app = express();
 app.use(express.json());
@@ -18,6 +19,7 @@ app.use("/api/items", itemRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/credit-memos", creditMemoRoutes);
 app.use("/customers", customerRoutes);
 
 app.get("/oauth/login", qbAuthController.login);

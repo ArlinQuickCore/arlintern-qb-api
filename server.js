@@ -10,6 +10,7 @@ import paymentRoutes from "./routes/payments.js";
 import vendorRoutes from "./routes/vendors.js";
 import billingRoutes from "./routes/billing.js";
 import transactionRoutes from "./routes/transactions.js";
+import creditMemoRoutes from "./routes/creditMemos.js";
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/credit-memos", creditMemoRoutes);
 app.get("/oauth/login", qbAuthController.login);
 app.get("/oauth/callback", qbAuthController.handleCallback);
 app.get("/oauth/tokens", qbAuthController.getStoredTokens);

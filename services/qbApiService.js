@@ -594,6 +594,109 @@ async function getTransactions(options = {}) {
   };
 }
 
+const creditMemoStatusFilters = {
+  refunded: undefined,
+  open: "Balance > '0'",
+  all: undefined
+};
+
+function getLinkedRefundReceiptIds(creditMemo) {
+  return (creditMemo.LinkedTxn || [])
+    .filter((txn) => txn.TxnType === "RefundReceipt")
+    .map((txn) => txn.TxnId)
+    .filter(Boolean);
+}
+
+// Shapes a CreditMemo into the transaction-list table columns (date, type,
+// ref no., contact, due date, balance, total amount, memo, last modified, status).
+function toCreditMemoTableRow(creditMemo) {
+  const refundReceiptIds = getLinkedRefundReceiptIds(creditMemo);
+  const balance = creditMemo.Balance ?? 0;
+  const totalAmount = creditMemo.TotalAmt ?? 0;
+  const refundReceived = refundReceiptIds.length > 0;
+
+  let status = "Open";
+  if (refundReceived) {
+    status = balance === 0 ? "Refunded" : "Partially refunded";
+  } else if (balance === 0) {
+    status = "Closed";
+  } else if (balance < totalAmount) {
+    status = "Partially applied";
+  }
+
+  return {
+    id: creditMemo.Id,
+    date: creditMemo.TxnDate || null,
+    type: "Credit memo",
+    refNo: creditMemo.DocNumber || null,
+    contact: creditMemo.CustomerRef?.name || null,
+    dueDate: null,
+    balance,
+    totalAmount,
+    memo: creditMemo.PrivateNote || creditMemo.CustomerMemo?.value || null,
+    lastModifiedDate: creditMemo.MetaData?.LastUpdatedTime || null,
+    status,
+    refundReceived,
+    refundReceiptIds
+  };
+}
+
+async function getCreditMemos(options = {}) {
+  const status = options.status || "refunded";
+
+  if (!(status in creditMemoStatusFilters)) {
+    throw new Error("Invalid credit memo status. Use refunded, open, or all.");
+  }
+
+  const filters = [];
+
+  if (creditMemoStatusFilters[status]) {
+    filters.push(creditMemoStatusFilters[status]);
+  }
+
+  for (const [name, value, operator] of [
+    ["startDate", options.startDate, ">="],
+    ["endDate", options.endDate, "<="]
+  ]) {
+    if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`${name} must use YYYY-MM-DD format.`);
+    }
+
+    if (value) {
+      filters.push(`TxnDate ${operator} '${value}'`);
+    }
+  }
+
+  for (const [field, value] of [
+    ["DocNumber", options.docNumber],
+    ["Id", options.id]
+  ]) {
+    if (value) {
+      filters.push(`${field} = '${String(value).replace(/'/g, "\\'")}'`);
+    }
+  }
+
+  const response = await queryResource("CreditMemo", "credit memos", {
+    where: filters.length ? filters.join(" and ") : undefined,
+    fetchAll: true
+  });
+
+  const { QueryResponse, ...rest } = response;
+  let creditMemos = (QueryResponse?.CreditMemo || []).map(toCreditMemoTableRow);
+
+  // A refund counts as received once the credit memo is linked to a refund
+  // receipt; this also catches partial refunds that still carry a balance.
+  if (status === "refunded") {
+    creditMemos = creditMemos.filter((creditMemo) => creditMemo.refundReceived);
+  }
+
+  return {
+    ...rest,
+    count: creditMemos.length,
+    creditMemos
+  };
+}
+
 async function createCustomer(payload) {
   const { access_token, realmId } = await qbTokenService.getTokens();
 
@@ -644,7 +747,8 @@ const qbApiService = {
   createBilling,
   getVendors: () => queryResource("Vendor", "vendors"),
   createVendor: (payload) => createResource("vendor", payload, "vendors"),
-  getTransactions
+  getTransactions,
+  getCreditMemos
 };
 
 export default qbApiService;
