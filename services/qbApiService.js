@@ -511,6 +511,103 @@ const transactionTypes = new Set([
   "GlobalTaxAdjustment"
 ]);
 
+// Maps report-style transaction type names to the queryable QuickBooks
+// entities that return every column via select *.
+const transactionEntityTypes = {
+  Invoice: "Invoice",
+  ReceivePayment: "Payment",
+  Bill: "Bill",
+  BillPaymentCheck: "BillPayment",
+  BillPaymentCreditCard: "BillPayment",
+  Check: "Purchase",
+  CashPurchase: "Purchase",
+  CreditCardCharge: "Purchase",
+  CreditCardCredit: "Purchase",
+  CreditMemo: "CreditMemo",
+  CreditRefund: "RefundReceipt",
+  SalesReceipt: "SalesReceipt",
+  Estimate: "Estimate",
+  Deposit: "Deposit",
+  Transfer: "Transfer",
+  JournalEntry: "JournalEntry",
+  VendorCredit: "VendorCredit",
+  PurchaseOrder: "PurchaseOrder",
+  TimeActivity: "TimeActivity"
+};
+
+const transactionDetailsCap = 500;
+
+async function getTransactionDetails(options = {}) {
+  const dateFilters = [];
+  for (const [name, value, operator] of [
+    ["startDate", options.startDate, ">="],
+    ["endDate", options.endDate, "<="]
+  ]) {
+    if (value !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`${name} must use YYYY-MM-DD format.`);
+    }
+
+    if (value) {
+      dateFilters.push(`TxnDate ${operator} '${value}'`);
+    }
+  }
+
+  const where = dateFilters.length ? dateFilters.join(" and ") : undefined;
+
+  const requestedTypes = options.transactionTypes?.length
+    ? [...new Set(options.transactionTypes)]
+    : null;
+
+  if (requestedTypes) {
+    const unsupported = requestedTypes.filter((type) => !transactionEntityTypes[type]);
+    if (unsupported.length) {
+      throw new Error(
+        `Unsupported transaction type for details: ${unsupported.join(", ")}. ` +
+        `Supported: ${Object.keys(transactionEntityTypes).join(", ")}.`
+      );
+    }
+  }
+
+  // Several report types map to the same entity (e.g. Check/CashPurchase are
+  // both Purchase), so query each entity once and tag rows with the entity.
+  const entityTypes = requestedTypes
+    ? [...new Set(requestedTypes.map((type) => transactionEntityTypes[type]))]
+    : [...new Set(Object.values(transactionEntityTypes))];
+
+  const responses = await Promise.all(
+    entityTypes.map((entity) => queryResource(entity, `${entity} transactions`, {
+      where,
+      fetchAll: true
+    }))
+  );
+
+  const transactions = [];
+  const byType = {};
+  let capped = false;
+
+  for (let index = 0; index < entityTypes.length && !capped; index += 1) {
+    const entity = entityTypes[index];
+    const rows = responses[index].QueryResponse?.[entity] || [];
+
+    for (const row of rows) {
+      if (transactions.length >= transactionDetailsCap) {
+        capped = true;
+        break;
+      }
+
+      transactions.push({ transactionType: entity, ...row });
+      byType[entity] = (byType[entity] || 0) + 1;
+    }
+  }
+
+  return {
+    count: transactions.length,
+    capped,
+    byType,
+    transactions
+  };
+}
+
 async function getTransactionReport(reportName, params, label) {
   const { access_token, realmId } = await qbTokenService.getTokens();
 
@@ -775,6 +872,7 @@ const qbApiService = {
   getVendors: () => queryResource("Vendor", "vendors"),
   createVendor: (payload) => createResource("vendor", payload, "vendors"),
   getTransactions,
+  getTransactionDetails,
   getCreditMemos
 };
 
