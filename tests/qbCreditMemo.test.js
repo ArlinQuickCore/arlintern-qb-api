@@ -68,8 +68,8 @@ test("returns credit memo table details when the refund is received", async () =
     const result = await qbApiService.getCreditMemos();
 
     assert.match(axiosGetMock.mock.calls[0].arguments[0], /select%20\*%20from%20CreditMemo/);
-    assert.equal(result.count, 1);
-    assert.equal(result.creditMemos.length, 1);
+    assert.equal(result.count, 2);
+    assert.equal(result.creditMemos.length, 2);
 
     const row = result.creditMemos[0];
     assert.deepEqual(row, {
@@ -88,6 +88,13 @@ test("returns credit memo table details when the refund is received", async () =
       refundTransactionIds: ["100"],
       linkedTransactions: [{ type: "RefundReceipt", id: "100" }]
     });
+
+    const appliedRow = result.creditMemos[1];
+    assert.equal(appliedRow.id, "147");
+    assert.equal(appliedRow.status, "Closed");
+    assert.equal(appliedRow.refundReceived, true);
+    assert.deepEqual(appliedRow.refundTransactionIds, []);
+    assert.deepEqual(appliedRow.linkedTransactions, [{ type: "Payment", id: "99" }]);
   } finally {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();

@@ -617,12 +617,15 @@ function toCreditMemoTableRow(creditMemo) {
   const refundTransactions = linkedTransactions.filter((txn) => refundLinkedTxnTypes.has(txn.type));
   const balance = creditMemo.Balance ?? 0;
   const totalAmount = creditMemo.TotalAmt ?? 0;
-  const refundReceived = refundTransactions.length > 0;
+  const hasLinkedRefund = refundTransactions.length > 0;
+  // QuickBooks does not always link the refund/payment back to the credit
+  // memo, so a zero balance is the reliable signal that the credit was settled.
+  const refundReceived = balance === 0 && totalAmount > 0;
 
   let status = "Open";
-  if (refundReceived) {
+  if (hasLinkedRefund) {
     status = balance === 0 ? "Refunded" : "Partially refunded";
-  } else if (balance === 0) {
+  } else if (refundReceived) {
     status = "Closed";
   } else if (balance < totalAmount) {
     status = "Partially applied";
@@ -710,8 +713,6 @@ async function getCreditMemos(options = {}) {
 
   let rows = creditMemos.map(toCreditMemoTableRow);
 
-  // A refund counts as received once the credit memo is linked to a refund
-  // transaction; this also catches partial refunds that still carry a balance.
   if (status === "refunded") {
     rows = rows.filter((row) => row.refundReceived);
   }
