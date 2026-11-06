@@ -587,17 +587,27 @@ async function getTransactionDetails(options = {}) {
 
   for (let index = 0; index < entityTypes.length && !capped; index += 1) {
     const entity = entityTypes[index];
-    const rows = responses[index].QueryResponse?.[entity] || [];
+    let rows = responses[index].QueryResponse?.[entity] || [];
+
+    if (transactions.length + rows.length > transactionDetailsCap) {
+      rows = rows.slice(0, transactionDetailsCap - transactions.length);
+      capped = true;
+    }
+
+    // Query responses omit CustomField, so re-read each Bill by id to resolve
+    // the Customer PO#/Supplier PO#/Vendor Type alias columns.
+    let billDetails = new Map();
+    if (entity === "Bill" && rows.length) {
+      billDetails = await getResourceDetails(
+        "Bill",
+        "Bill",
+        rows.map((row) => row.Id).filter(Boolean),
+        "transaction bill details"
+      );
+    }
 
     for (const row of rows) {
-      if (transactions.length >= transactionDetailsCap) {
-        capped = true;
-        break;
-      }
-
-      // select * returns full Bill rows, so alias columns resolve without a
-      // second detail fetch.
-      const shaped = entity === "Bill" ? addBillingColumnAliases(row) : row;
+      const shaped = entity === "Bill" ? addBillingColumnAliases(row, billDetails) : row;
       transactions.push({ transactionType: entity, ...shaped });
       byType[entity] = (byType[entity] || 0) + 1;
     }

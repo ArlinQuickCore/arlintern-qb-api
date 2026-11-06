@@ -105,26 +105,34 @@ test("fans out per requested type and merges full entity rows", async () => {
 test("adds billing alias columns to Bill transaction details", async () => {
   const getTokensMock = mockTokens();
   const axiosGetMock = mock.method(axios, "get", async (url) => {
+    if (url.includes("/bill/7")) {
+      return {
+        data: {
+          Bill: {
+            Id: "7",
+            DocNumber: "BILL-1",
+            TotalAmt: 42,
+            Balance: 42,
+            CustomField: [
+              { DefinitionId: "1", Name: "Customer PO#", StringValue: "CPO-100" },
+              { DefinitionId: "2", Name: "Supplier PO#", StringValue: "SPO-200" },
+              { DefinitionId: "3", Name: "Vendor Type", StringValue: "PO Vendor" }
+            ],
+            Line: [{
+              Id: "1",
+              CustomField: [{ DefinitionId: "4", Name: "PHASE", StringValue: "Phase 1" }]
+            }]
+          }
+        }
+      };
+    }
+
     if (url.includes("from%20Bill")) {
       return {
         data: {
           url,
           QueryResponse: {
-            Bill: [{
-              Id: "7",
-              DocNumber: "BILL-1",
-              TotalAmt: 42,
-              Balance: 42,
-              CustomField: [
-                { DefinitionId: "1", Name: "Customer PO#", StringValue: "CPO-100" },
-                { DefinitionId: "2", Name: "Supplier PO#", StringValue: "SPO-200" },
-                { DefinitionId: "3", Name: "Vendor Type", StringValue: "PO Vendor" }
-              ],
-              Line: [{
-                Id: "1",
-                CustomField: [{ DefinitionId: "4", Name: "PHASE", StringValue: "Phase 1" }]
-              }]
-            }]
+            Bill: [{ Id: "7", DocNumber: "BILL-1", TotalAmt: 42, Balance: 42 }]
           }
         }
       };
