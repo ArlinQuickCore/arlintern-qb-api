@@ -626,10 +626,41 @@ async function getTransactionDetails(options = {}) {
     );
   }
 
+  // Maps API entity names to QBO UI display names.
+  const displayTypeMap = {
+    Invoice: "Invoice",
+    Payment: "Payment",
+    Bill: "Bill",
+    BillPayment: "Bill Payment",
+    CreditMemo: "Credit Memo",
+    RefundReceipt: "Refund Receipt",
+    SalesReceipt: "Sales Receipt",
+    Estimate: "Estimate",
+    Deposit: "Deposit",
+    Transfer: "Transfer",
+    JournalEntry: "Journal Entry",
+    VendorCredit: "Vendor Credit",
+    PurchaseOrder: "Purchase Order",
+    TimeActivity: "Time Activity"
+  };
+
+  const purchaseDisplayTypes = {
+    Check: "Check",
+    Cash: "Cash Purchase",
+    CreditCard: "Expense"
+  };
+
   const transactions = pageRows.map((row) => {
-    if (row.transactionType !== "Bill") return row;
-    const { transactionType, ...billRow } = row;
-    return { transactionType, ...addBillingColumnAliases(billRow, billDetails) };
+    const displayType = row.transactionType === "Purchase"
+      ? purchaseDisplayTypes[row.PaymentType] || "Expense"
+      : displayTypeMap[row.transactionType] || row.transactionType;
+
+    if (row.transactionType === "Bill") {
+      const { transactionType, ...billRow } = row;
+      return { transactionType, displayType, ...addBillingColumnAliases(billRow, billDetails) };
+    }
+
+    return { displayType, ...row };
   });
 
   const byType = {};
