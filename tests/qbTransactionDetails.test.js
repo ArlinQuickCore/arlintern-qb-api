@@ -102,6 +102,55 @@ test("fans out per requested type and merges full entity rows", async () => {
   }
 });
 
+test("adds billing alias columns to Bill transaction details", async () => {
+  const getTokensMock = mockTokens();
+  const axiosGetMock = mock.method(axios, "get", async (url) => {
+    if (url.includes("from%20Bill")) {
+      return {
+        data: {
+          url,
+          QueryResponse: {
+            Bill: [{
+              Id: "7",
+              DocNumber: "BILL-1",
+              TotalAmt: 42,
+              Balance: 42,
+              CustomField: [
+                { DefinitionId: "1", Name: "Customer PO#", StringValue: "CPO-100" },
+                { DefinitionId: "2", Name: "Supplier PO#", StringValue: "SPO-200" },
+                { DefinitionId: "3", Name: "Vendor Type", StringValue: "PO Vendor" }
+              ],
+              Line: [{
+                Id: "1",
+                CustomField: [{ DefinitionId: "4", Name: "PHASE", StringValue: "Phase 1" }]
+              }]
+            }]
+          }
+        }
+      };
+    }
+
+    return { data: { url, QueryResponse: {} } };
+  });
+
+  try {
+    const result = await qbApiService.getTransactionDetails({ transactionTypes: ["Bill"] });
+
+    assert.equal(result.count, 1);
+    const bill = result.transactions[0];
+    assert.equal(bill.transactionType, "Bill");
+    assert.equal(bill.DocNumber, "BILL-1");
+    assert.equal(bill.Balance, 42);
+    assert.equal(bill["Customer PO#"], "CPO-100");
+    assert.equal(bill["Supplier PO#"], "SPO-200");
+    assert.equal(bill["Vendor Type"], "PO Vendor");
+    assert.equal(bill.Line[0].PHASE, "Phase 1");
+  } finally {
+    getTokensMock.mock.restore();
+    axiosGetMock.mock.restore();
+  }
+});
+
 test("maps report type aliases to their queryable entity", async () => {
   const getTokensMock = mockTokens();
   const requestedUrls = [];

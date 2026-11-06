@@ -595,7 +595,10 @@ async function getTransactionDetails(options = {}) {
         break;
       }
 
-      transactions.push({ transactionType: entity, ...row });
+      // select * returns full Bill rows, so alias columns resolve without a
+      // second detail fetch.
+      const shaped = entity === "Bill" ? addBillingColumnAliases(row) : row;
+      transactions.push({ transactionType: entity, ...shaped });
       byType[entity] = (byType[entity] || 0) + 1;
     }
   }
