@@ -604,8 +604,6 @@ async function getTransactionDetails(options = {}) {
         rows.map((row) => row.Id).filter(Boolean),
         "transaction bill details"
       );
-      globalThis.__lastBillDetailsSize = billDetails.size;
-      globalThis.__lastBillRowsCount = rows.length;
     }
 
     for (const row of rows) {
@@ -615,20 +613,10 @@ async function getTransactionDetails(options = {}) {
     }
   }
 
-  const firstBill = transactions.find((txn) => txn.transactionType === "Bill");
-
   return {
     count: transactions.length,
     capped,
     byType,
-    _debug: firstBill
-      ? {
-          hasCustomField: Object.prototype.hasOwnProperty.call(firstBill, "CustomField"),
-          detailKeys: Object.keys(firstBill).sort(),
-          billDetailsFetched: globalThis.__lastBillDetailsSize ?? "not run",
-          billRowsCount: globalThis.__lastBillRowsCount ?? "not run"
-        }
-      : null,
     transactions
   };
 }
