@@ -613,10 +613,18 @@ async function getTransactionDetails(options = {}) {
     }
   }
 
+  const firstBill = transactions.find((txn) => txn.transactionType === "Bill");
+
   return {
     count: transactions.length,
     capped,
     byType,
+    _debug: firstBill
+      ? {
+          hasCustomField: Object.prototype.hasOwnProperty.call(firstBill, "CustomField"),
+          detailKeys: Object.keys(firstBill).sort()
+        }
+      : null,
     transactions
   };
 }
