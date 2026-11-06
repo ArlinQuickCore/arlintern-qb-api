@@ -26,7 +26,9 @@ const qbTransactionController = {
       const data = await qbApiService.getTransactionDetails({
         transactionTypes,
         startDate: req.query.startDate,
-        endDate: req.query.endDate
+        endDate: req.query.endDate,
+        page: req.query.page,
+        pageSize: req.query.pageSize
       });
       res.json(data);
     } catch (err) {

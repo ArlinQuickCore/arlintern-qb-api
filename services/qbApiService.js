@@ -536,6 +536,7 @@ const transactionEntityTypes = {
 };
 
 const transactionDetailsCap = 500;
+const transactionDetailsPageSize = 500;
 
 async function getTransactionDetails(options = {}) {
   const dateFilters = [];
@@ -581,41 +582,69 @@ async function getTransactionDetails(options = {}) {
     }))
   );
 
-  const transactions = [];
-  const byType = {};
-  let capped = false;
-
-  for (let index = 0; index < entityTypes.length && !capped; index += 1) {
+  // Flatten all entity rows into a single list, tagged with the entity type.
+  const allTransactions = [];
+  for (let index = 0; index < entityTypes.length; index += 1) {
     const entity = entityTypes[index];
-    let rows = responses[index].QueryResponse?.[entity] || [];
-
-    if (transactions.length + rows.length > transactionDetailsCap) {
-      rows = rows.slice(0, transactionDetailsCap - transactions.length);
-      capped = true;
-    }
-
-    // Query responses omit CustomField, so re-read each Bill by id to resolve
-    // the Customer PO#/Supplier PO#/Vendor Type alias columns.
-    let billDetails = new Map();
-    if (entity === "Bill" && rows.length) {
-      billDetails = await getResourceDetails(
-        "Bill",
-        "Bill",
-        rows.map((row) => row.Id).filter(Boolean),
-        "transaction bill details"
-      );
-    }
+    const rows = responses[index].QueryResponse?.[entity] || [];
 
     for (const row of rows) {
-      const shaped = entity === "Bill" ? addBillingColumnAliases(row, billDetails) : row;
-      transactions.push({ transactionType: entity, ...shaped });
-      byType[entity] = (byType[entity] || 0) + 1;
+      allTransactions.push({ transactionType: entity, ...row });
     }
+  }
+
+  // Sort by TxnDate then Id for stable pagination.
+  allTransactions.sort((a, b) => {
+    const dateCompare = (a.TxnDate || "").localeCompare(b.TxnDate || "");
+    if (dateCompare !== 0) return dateCompare;
+    const idA = Number(a.Id) || 0;
+    const idB = Number(b.Id) || 0;
+    return idA - idB;
+  });
+
+  const totalCount = allTransactions.length;
+
+  // Paginate: page=1 returns rows 0-499, page=2 returns 500-999, etc.
+  const page = Math.max(1, Number(options.page) || 1);
+  const pageSize = Math.min(
+    transactionDetailsCap,
+    Math.max(1, Number(options.pageSize) || transactionDetailsPageSize)
+  );
+  const startIndex = (page - 1) * pageSize;
+  const pageRows = allTransactions.slice(startIndex, startIndex + pageSize);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  // Detail-fetch Bills on this page to resolve alias columns.
+  const billRows = pageRows.filter((row) => row.transactionType === "Bill");
+  let billDetails = new Map();
+  if (billRows.length) {
+    billDetails = await getResourceDetails(
+      "Bill",
+      "Bill",
+      billRows.map((row) => row.Id).filter(Boolean),
+      "transaction bill details"
+    );
+  }
+
+  const transactions = pageRows.map((row) => {
+    if (row.transactionType !== "Bill") return row;
+    const { transactionType, ...billRow } = row;
+    return { transactionType, ...addBillingColumnAliases(billRow, billDetails) };
+  });
+
+  const byType = {};
+  for (const row of transactions) {
+    byType[row.transactionType] = (byType[row.transactionType] || 0) + 1;
   }
 
   return {
     count: transactions.length,
-    capped,
+    totalCount,
+    page,
+    pageSize,
+    totalPages,
+    hasMore: page < totalPages,
+    capped: false,
     byType,
     transactions
   };

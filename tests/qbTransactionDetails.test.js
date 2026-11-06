@@ -132,7 +132,7 @@ test("adds billing alias columns to Bill transaction details", async () => {
         data: {
           url,
           QueryResponse: {
-            Bill: [{ Id: "7", DocNumber: "BILL-1", TotalAmt: 42, Balance: 42 }]
+            Bill: [{ Id: "7", TxnDate: "2026-10-20", DocNumber: "BILL-1", TotalAmt: 42, Balance: 42 }]
           }
         }
       };
@@ -173,6 +173,103 @@ test("maps report type aliases to their queryable entity", async () => {
     assert.equal(requestedUrls.length, 2);
     assert.ok(requestedUrls.some((url) => url.includes("from%20Payment")));
     assert.ok(requestedUrls.some((url) => url.includes("from%20Purchase")));
+  } finally {
+    getTokensMock.mock.restore();
+    axiosGetMock.mock.restore();
+  }
+});
+
+test("paginates transaction details with page and pageSize", async () => {
+  const getTokensMock = mockTokens();
+  const axiosGetMock = mock.method(axios, "get", async (url) => {
+    if (url.includes("from%20Invoice")) {
+      return {
+        data: {
+          url,
+          QueryResponse: {
+            Invoice: Array.from({ length: 1200 }, (_, i) => ({
+              Id: String(i + 1),
+              TxnDate: "2026-06-15",
+              DocNumber: `INV-${i + 1}`,
+              TotalAmt: 100
+            }))
+          }
+        }
+      };
+    }
+
+    return { data: { url, QueryResponse: {} } };
+  });
+
+  try {
+    const page1 = await qbApiService.getTransactionDetails({
+      transactionTypes: ["Invoice"],
+      page: 1,
+      pageSize: 500
+    });
+
+    assert.equal(page1.count, 500);
+    assert.equal(page1.totalCount, 1200);
+    assert.equal(page1.page, 1);
+    assert.equal(page1.totalPages, 3);
+    assert.equal(page1.hasMore, true);
+    assert.equal(page1.transactions[0].DocNumber, "INV-1");
+
+    const page2 = await qbApiService.getTransactionDetails({
+      transactionTypes: ["Invoice"],
+      page: 2,
+      pageSize: 500
+    });
+
+    assert.equal(page2.count, 500);
+    assert.equal(page2.page, 2);
+    assert.equal(page2.hasMore, true);
+    assert.equal(page2.transactions[0].DocNumber, "INV-501");
+
+    const page3 = await qbApiService.getTransactionDetails({
+      transactionTypes: ["Invoice"],
+      page: 3,
+      pageSize: 500
+    });
+
+    assert.equal(page3.count, 200);
+    assert.equal(page3.page, 3);
+    assert.equal(page3.hasMore, false);
+    assert.equal(page3.transactions[0].DocNumber, "INV-1001");
+  } finally {
+    getTokensMock.mock.restore();
+    axiosGetMock.mock.restore();
+  }
+});
+
+test("sorts transactions by TxnDate then Id for stable pagination", async () => {
+  const getTokensMock = mockTokens();
+  const axiosGetMock = mock.method(axios, "get", async (url) => {
+    if (url.includes("from%20Invoice")) {
+      return {
+        data: {
+          url,
+          QueryResponse: {
+            Invoice: [
+              { Id: "3", TxnDate: "2026-06-15", DocNumber: "C" },
+              { Id: "1", TxnDate: "2026-06-10", DocNumber: "A" },
+              { Id: "2", TxnDate: "2026-06-15", DocNumber: "B" }
+            ]
+          }
+        }
+      };
+    }
+
+    return { data: { url, QueryResponse: {} } };
+  });
+
+  try {
+    const result = await qbApiService.getTransactionDetails({ transactionTypes: ["Invoice"] });
+
+    assert.deepEqual(
+      result.transactions.map((txn) => txn.DocNumber),
+      ["A", "B", "C"]
+    );
   } finally {
     getTokensMock.mock.restore();
     axiosGetMock.mock.restore();
