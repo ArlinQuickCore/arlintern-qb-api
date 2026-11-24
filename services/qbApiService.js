@@ -681,10 +681,13 @@ async function getTransactionDetails(options = {}) {
   };
 }
 
-async function getTransactionReport(reportName, params, label) {
+async function getTransactionReport(reportName, params, label, requireAuthentication = false) {
   const { access_token, realmId } = await qbTokenService.getTokens();
 
   if (!access_token || !realmId) {
+    if (requireAuthentication) {
+      throw new Error("No QuickBooks token or realm is stored yet. Complete OAuth first.");
+    }
     return {
       Rows: {},
       message: "No QuickBooks token or realm is stored yet. Complete OAuth first."
@@ -712,10 +715,14 @@ async function getTransactionReport(reportName, params, label) {
     return response.data;
   };
 
-  return retryAfterRefresh(requestFn, label, { Rows: {} });
+  const report = await retryAfterRefresh(requestFn, label, { Rows: {} });
+  if (requireAuthentication && report.status === "unauthorized") {
+    throw new Error(report.message);
+  }
+  return report;
 }
 
-async function getTransactions(options = {}) {
+async function getTransactionListReport(options = {}, reportParams = {}, requireAuthentication = false) {
   const dateParams = {};
 
   for (const [name, param, value] of [
@@ -744,15 +751,21 @@ async function getTransactions(options = {}) {
   if (!requestedTypes || requestedTypes.length <= 1) {
     const params = {
       ...dateParams,
+      ...reportParams,
       ...(requestedTypes ? { transaction_type: requestedTypes[0] } : {})
     };
 
-    return getTransactionReport("TransactionList", params, "transactions");
+    return getTransactionReport("TransactionList", params, "transactions", requireAuthentication);
   }
 
   const reports = await Promise.all(
     requestedTypes.map((type) =>
-      getTransactionReport("TransactionList", { ...dateParams, transaction_type: type }, "transactions")
+      getTransactionReport(
+        "TransactionList",
+        { ...dateParams, ...reportParams, transaction_type: type },
+        "transactions",
+        requireAuthentication
+      )
     )
   );
 
@@ -762,6 +775,18 @@ async function getTransactions(options = {}) {
     ...reports[0],
     Rows: { Row: mergedRows }
   };
+}
+
+async function getTransactions(options = {}) {
+  return getTransactionListReport(options);
+}
+
+async function getTransactionCreatedBy(options = {}) {
+  return getTransactionListReport(
+    options,
+    { columns: "tx_date,txn_type,doc_num,create_by" },
+    true
+  );
 }
 
 const creditMemoStatusFilters = {
@@ -945,6 +970,7 @@ const qbApiService = {
   getVendors: () => queryResource("Vendor", "vendors"),
   createVendor: (payload) => createResource("vendor", payload, "vendors"),
   getTransactions,
+  getTransactionCreatedBy,
   getTransactionDetails,
   getCreditMemos
 };

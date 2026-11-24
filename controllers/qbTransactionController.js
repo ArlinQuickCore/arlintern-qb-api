@@ -18,6 +18,23 @@ const qbTransactionController = {
     }
   },
 
+  async createdBy(req, res) {
+    try {
+      const transactionTypes = req.query.transactionTypes
+        ? req.query.transactionTypes.split(",").map((type) => type.trim()).filter(Boolean)
+        : undefined;
+      const data = await qbApiService.getTransactionCreatedBy({
+        transactionTypes,
+        startDate: req.query.startDate,
+        endDate: req.query.endDate
+      });
+      res.json(data);
+    } catch (err) {
+      console.error("Transaction created-by report error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
   async details(req, res) {
     try {
       const transactionTypes = req.query.transactionTypes
